@@ -1,0 +1,24 @@
+#!/bin/bash
+native=/usr/bin/w
+if [[ -d /run/systemd/system || $(LC_ALL=C "$native" -V) != 'w from procps-ng 4.0.4' ]]; then
+    exec "$native" "$@"
+fi
+
+# Noble's systemd-enabled w crashes formatting FROM for a plain utmp login.
+# Keep its process, CPU and idle-time reporting and omit the remote-host column.
+args=()
+for arg in "$@"; do
+    case $arg in
+        --) args+=("$@"); break ;;
+        --from|--ip-addr) ;;
+        --*) args+=("$arg") ;;
+        -?*)
+            flags=${arg:1}
+            flags=${flags//[fi]/}
+            [[ -z $flags ]] || args+=("-$flags")
+            ;;
+        *) args+=("$arg") ;;
+    esac
+    shift
+done
+exec "$native" -f "${args[@]}"

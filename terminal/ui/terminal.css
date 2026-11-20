@@ -1,0 +1,76 @@
+:root {
+  color-scheme: dark;
+  background: #101319;
+  color: #edf1f8;
+  font: 14px system-ui, sans-serif;
+  --muted: #a3afc0;
+  --accent: #9eddd1;
+  --border: #303743;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
+header, nav { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #191e28; }
+header { min-height: 53px; border-bottom: 1px solid var(--border); }
+h1 { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 650; }
+#status { color: var(--muted); font-size: 12px; white-space: nowrap; }
+#status[data-running="true"] { color: var(--accent); }
+
+button {
+  min-width: 38px;
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #222936;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover { background: #303b4c; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { color: var(--muted); opacity: .65; cursor: default; }
+button[aria-pressed="true"] { border-color: var(--accent); color: #101319; background: var(--accent); }
+#back, #clipboard { font-size: 20px; }
+#progress { padding: 8px 12px; color: var(--accent); background: #191e28; border-bottom: 1px solid var(--border); }
+
+main { flex: 1; min-height: 0; min-width: 0; padding: 10px 8px 4px 12px; overflow: hidden; }
+.ide-draft {
+  display: flex;
+  align-items: center;
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  white-space: pre;
+  background: #101319;
+  color: #edf1f8;
+  text-decoration: underline;
+}
+nav { border-top: 1px solid var(--border); overflow-x: auto; }
+nav button { flex: none; font-family: monospace; }
+#clipboard-menu, #notice {
+  position: fixed;
+  z-index: 10;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #222936;
+  box-shadow: 0 6px 22px #0007;
+}
+#clipboard-menu { padding: 4px; }
+#clipboard-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  border-color: transparent;
+}
+kbd { color: var(--muted); font: 11px monospace; }
+#notice { bottom: 56px; left: 12px; max-width: calc(100vw - 24px); padding: 8px 12px; }
+
+@media (max-width: 390px) {
+  header, nav { gap: 5px; padding-inline: 8px; }
+  h1 { font-size: 14px; }
+}

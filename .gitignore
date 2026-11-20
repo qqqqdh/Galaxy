@@ -1,2 +1,5 @@
 .build-cache/
 dist/
+node_modules/
+*.jks
+*.keystore

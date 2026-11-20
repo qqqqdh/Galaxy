@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'none'; base-uri 'none'">
+  <title>Galaxy Terminal</title>
+  <link rel="stylesheet" href="xterm.css">
+  <link rel="stylesheet" href="terminal.css">
+  <script src="xterm.js" defer></script>
+  <script src="addon-fit.js" defer></script>
+  <script src="terminal.js" defer></script>
+</head>
+<body>
+  <header>
+    <button id="back" aria-label="Android 셸로 돌아가기" hidden>‹</button>
+    <h1>Galaxy Terminal</h1>
+    <span id="status" role="status">여는 중</span>
+    <button id="restart" hidden>새 셸</button>
+    <button id="ubuntu" hidden>Ubuntu</button>
+    <button id="browser">브라우저</button>
+    <button id="keyboard">키보드</button>
+    <button id="clipboard" aria-label="복사 및 붙여넣기" aria-controls="clipboard-menu" aria-expanded="false">⋯</button>
+  </header>
+  <div id="progress" role="status" hidden></div>
+  <main id="terminal" aria-label="터미널"></main>
+  <nav id="keys" aria-label="터미널 보조 키">
+    <button data-key="Escape">Esc</button>
+    <button data-key="Tab">Tab</button>
+    <button id="control" aria-pressed="false">Ctrl</button>
+    <button data-key="ArrowLeft" aria-label="왼쪽 화살표">←</button>
+    <button data-key="ArrowDown" aria-label="아래 화살표">↓</button>
+    <button data-key="ArrowUp" aria-label="위 화살표">↑</button>
+    <button data-key="ArrowRight" aria-label="오른쪽 화살표">→</button>
+  </nav>
+  <div id="clipboard-menu" hidden>
+    <button id="copy">복사 <kbd>Ctrl+Shift+C</kbd></button>
+    <button id="paste">붙여넣기 <kbd>Ctrl+Shift+V</kbd></button>
+  </div>
+  <div id="notice" role="status" hidden></div>
+</body>
+</html>

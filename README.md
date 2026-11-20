@@ -1,14 +1,17 @@
-# Galaxy IDE
+# Galaxy Terminal과 Galaxy IDE
 
-Galaxy Terminal의 Ubuntu에서 실행하는 키보드·터치 지원 터미널 IDE입니다. 최신 버전은 **0.1.10**입니다.
+갤럭시 탭에서 Ubuntu를 열고 코드를 편집·빌드할 수 있는 Android 터미널과 CLI 편집기입니다.
 
-- [Linux ARM64 다운로드](https://github.com/qqqqdh/Galaxy/releases/tag/ide-v0.1.10)
-- [사용법과 소스 빌드](cli-ide/README.md)
-- [버전별 변경 내용과 체크섬](versions/)
-- [전체 변경 이력](cli-ide/CHANGELOG.md)
-- [두 파일 C++ 예제](cli-ide/examples/clangd/)
+| 프로그램 | 다운로드 | 소스와 사용법 | 버전별 기록 |
+| --- | --- | --- | --- |
+| Galaxy Terminal (Android) | [0.4.9 APK](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.9) | [터미널 사용법과 빌드](terminal/) | [터미널 배포 기록](versions/terminal/) |
+| Galaxy IDE (Ubuntu ARM64) | [0.1.10 실행 파일](https://github.com/qqqqdh/Galaxy/releases/tag/ide-v0.1.10) | [IDE 사용법과 빌드](cli-ide/) | [IDE 변경 이력](cli-ide/CHANGELOG.md) |
 
-## 설치
+## Galaxy Terminal 설치
+
+Android에서 릴리스의 `Galaxy-Terminal.apk`를 설치하세요. 앱을 열면 Android 셸이 시작됩니다. ARM64 Android 9 이상 기기에서는 상단 **Ubuntu**를 눌러 Ubuntu 24.04 LTS 계정을 만들 수 있습니다. 초기 설정에는 인터넷 연결이 필요합니다.
+
+## Galaxy IDE 설치
 
 릴리스에서 `galaxy-ide-linux-arm64`를 받은 뒤 Ubuntu에서 실행하세요.
 

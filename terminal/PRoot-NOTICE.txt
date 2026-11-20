@@ -1,0 +1,13 @@
+Galaxy Terminal launches PRoot as a separate executable.
+
+The ARM64 PRoot executable and loader are from oonid/pr commit
+7029b1fe8fa84d64339cabe38f9c5be2ea2ae7ac. PRoot source is GPL-2.0-or-later.
+The executable includes LGPL-3.0-or-later talloc and is distributed under GPL-3.0.
+https://github.com/oonid/pr/tree/7029b1fe8fa84d64339cabe38f9c5be2ea2ae7ac/src/proot
+
+PRoot-source.tar.gz contains the PRoot source, scripts/build.sh, and
+the included talloc sources (samba-team/samba commit
+2f8dfde1210395175e726455bdb63a7b97245a72, lib/talloc, LGPL-3.0-or-later).
+https://github.com/samba-team/samba/tree/2f8dfde1210395175e726455bdb63a7b97245a72/lib/talloc
+
+To rebuild on Linux, use bash scripts/build.sh --arch=arm64.

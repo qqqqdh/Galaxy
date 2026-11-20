@@ -1,0 +1,10 @@
+if [ -r /system/etc/mkshrc ]; then
+    . /system/etc/mkshrc
+fi
+
+set -U
+unset ENV
+
+# mksh excludes text between the Ctrl-A delimiters from the prompt width.
+PS1=$'\001\r${PWD##*/} $ \001\e]133;B\a\001'
+PS2=$'\001\r> \001\e]133;B\a\001'

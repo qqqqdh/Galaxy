@@ -1,0 +1,33 @@
+if [[ $- == *i* && -t 0 && -x /usr/libexec/galaxy-session ]]; then
+    # Wait for registration before the first prompt; the helper follows this Bash PID.
+    IFS= read -r _galaxy_ready < <(exec /usr/libexec/galaxy-session "$$" "$(id -un)") ||
+        printf 'Galaxy Terminal: Ubuntu 로그인 세션을 기록하지 못했습니다.\n' >&2
+    unset _galaxy_ready
+fi
+
+if [ -r ~/.bashrc ]; then
+    . ~/.bashrc
+fi
+
+# Android restricts reading other processes' start times required by Codex's daemon.
+codex() {
+    local argument
+    for argument in "$@"; do
+        if [[ $argument == --no-daemon ]]; then
+            command codex "$@"
+            return
+        fi
+        [[ $argument == -- ]] && break
+    done
+    command codex --no-daemon "$@"
+}
+
+# Use the guest name in the prompt while PRoot shares Android's kernel hostname.
+if [[ ${GALAXY_HOSTNAME:-} =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    export HOSTNAME=$GALAXY_HOSTNAME
+    PS1=${PS1//\\h/$HOSTNAME}
+fi
+
+# Let the terminal identify Bash's editable prompt for live Korean composition.
+PS1="${PS1-ubuntu:\w\$ }"'\[\e]133;B\a\]'
+PS2="${PS2-> }"'\[\e]133;B\a\]'
