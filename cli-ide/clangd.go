@@ -181,6 +181,7 @@ func startLanguageServer(ctx context.Context, p nativeProject, tools languageToo
 		return nil, err
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
+	isolateLanguageServer(cmd)
 	cmd.Dir = p.root
 	in, err := cmd.StdinPipe()
 	if err != nil {

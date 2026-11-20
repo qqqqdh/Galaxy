@@ -113,7 +113,7 @@ UTF-8 텍스트 파일을 8 MiB까지 편집합니다. 한글, UTF-8 BOM, LF/CRL
 | Rust (.rs) | rustc로 임시 실행 파일을 만들어 실행 | `rust-analyzer` |
 | C/C++ | 프로젝트 소스를 함께 빌드하고 실행 | `clangd` |
 
-색상 강조는 기본 제공됩니다. 자동완성(Ctrl+K, Tab으로 적용), 정의 이동(Ctrl+] 또는 F12), 문제 탭과 편집기 밑줄에는 언어 서버가 제공하는 결과가 표시됩니다. 서버에서 진단이나 정의 위치를 제공하는 범위는 언어와 프로젝트 설정에 따라 다릅니다. HTML/CSS 미리보기에는 Python 3이 필요하며, 서버는 기기의 루프백 주소에만 열립니다. Ctrl+C로 종료합니다. Go 모듈 전체, Cargo, Maven, Gradle 프로젝트는 아래 예처럼 `.galaxy-ide.json`의 build 작업으로 실행할 수 있습니다.
+색상 강조는 기본 제공됩니다. 자동완성(Ctrl+K, Tab으로 적용), 정의 이동(Ctrl+] 또는 F12), 문제 탭과 편집기 밑줄에는 언어 서버가 제공하는 결과가 표시됩니다. 서버에서 진단이나 정의 위치를 제공하는 범위는 언어와 프로젝트 설정에 따라 다릅니다. HTML/CSS 미리보기에는 Python 3이 필요하며, 서버는 기기의 루프백 주소에만 열립니다. Ctrl+C로 미리보기를 끝낸 뒤 Enter를 누르면 편집기로 돌아옵니다. Go 모듈 전체, Cargo, Maven, Gradle 프로젝트는 아래 예처럼 `.galaxy-ide.json`의 build 작업으로 실행할 수 있습니다.
 
 ```json
 {"tasks":[{"name":"Cargo 실행","group":"build","args":["cargo","run"]}]}
@@ -121,7 +121,7 @@ UTF-8 텍스트 파일을 8 MiB까지 편집합니다. 한글, UTF-8 BOM, LF/CRL
 
 ### Ubuntu에서 언어 도구 준비
 
-- Java는 JDK와 Eclipse JDT LS가 필요합니다. 사용 중인 JDK와 호환되는 릴리스의 `bin/jdtls`를 PATH에 추가하세요. [Eclipse JDT LS 배포 안내](https://github.com/eclipse-jdtls/eclipse.jdt.ls#installation)
+- Java는 JDK와 Eclipse JDT LS가 필요합니다. 갤럭시 탭의 ARM64 Ubuntu에서는 OpenJDK 21과 JDT LS 1.50.0을 확인했습니다. PRoot에서 tar가 JAR 파일을 디렉터리로 취급하면 새 폴더에 `python3 -m tarfile -e 서버파일.tar.gz 대상폴더`로 압축을 푸세요. 사용 중인 JDK와 호환되는 릴리스의 `bin/jdtls`를 PATH에 추가하세요. [Eclipse JDT LS 배포 안내](https://github.com/eclipse-jdtls/eclipse.jdt.ls#installation)
 - JavaScript·HTML·CSS·Python 서버는 Node와 npm을 준비한 뒤 `npm install --global --prefix "$HOME/.local" typescript typescript-language-server vscode-langservers-extracted pyright`로 설치할 수 있습니다. Python 프로그램을 실행할 때는 `python3`도 필요합니다.
 - Go는 Ubuntu에서 `sudo apt install golang-go gopls`로 설치합니다. Rust는 rustup의 stable 도구 모음에서 `rustup component add rust-analyzer rust-src`로 서버와 표준 라이브러리 소스를 추가합니다.
 - Ubuntu의 PATH에 `~/.local/bin`과 사용하는 도구의 bin 폴더를 포함하고, 실행 중인 IDE를 다시 여세요.

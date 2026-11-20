@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -255,6 +256,10 @@ func (i *ide) executeTask(t task) {
 	var buildIssues []problem
 	var runErr error
 	suspended := i.app.Suspend(func() {
+		// The foreground task and IDE share a terminal process group during Suspend.
+		interrupts := make(chan os.Signal, 1)
+		signal.Notify(interrupts, os.Interrupt)
+		defer signal.Stop(interrupts)
 		run := func(executable string, args ...string) error {
 			compiling := t.buildAndRun && executable == program
 			if compiling {

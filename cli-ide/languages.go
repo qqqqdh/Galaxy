@@ -143,7 +143,10 @@ rustc --crate-name galaxy_main --edition=2021 "$1" -o "$d/program"
 handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=sys.argv[1])
 with http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
     print("Galaxy Terminal 브라우저: http://127.0.0.1:%d/%s  (Ctrl+C 종료)" % (server.server_port, sys.argv[2]), flush=True)
-    server.serve_forever()`, root, entry}
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass`, root, entry}
 	default:
 		if strings.ToLower(filepath.Ext(path)) != ".sh" {
 			return task{}, false
