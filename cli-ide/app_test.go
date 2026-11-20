@@ -1,0 +1,336 @@
+package main
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/alecthomas/chroma/v2"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+)
+
+func TestNativeProjectSources(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"main.c", "src/연산 file.c", "lib/math.C", "include/math.h", "build/cache.c", ".cache/temp.c", "ignored/test.cpp"} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	project := nativeProject{root: root, ignore: []string{"ignored"}}
+	main := filepath.Join(root, "main.c")
+	args, err := project.buildArgs(main)
+	expected := []string{"c++", "-Wall", "-Wextra", "-I", root, "-I", filepath.Join(root, "include"), "-x", "c", main, filepath.Join(root, "src/연산 file.c"), "-x", "c++", filepath.Join(root, "lib/math.C")}
+	if err != nil || !slices.Equal(args, expected) {
+		t.Fatalf("mixed project: %q, %v", args, err)
+	}
+	project.shallow = true
+	args, err = project.buildArgs(main)
+	expected[0] = "cc"
+	if err != nil || !slices.Equal(args, expected[:10]) {
+		t.Fatalf("flat project: %q, %v", args, err)
+	}
+}
+
+func TestNativeBuildAndRun(t *testing.T) {
+	for ext, compiler := range map[string]string{".c": "cc", ".C": "c++", ".cpp": "c++", ".cc": "c++", ".cxx": "c++", ".h": ""} {
+		job, ok := nativeBuild("한 글" + ext)
+		if ok != (compiler != "") || ok && (!job.buildAndRun || job.Args[0] != compiler) {
+			t.Fatalf("unexpected task for %s: %+v", ext, job)
+		}
+	}
+	failure := errors.New("compile failed")
+	for _, compileErr := range []error{nil, failure} {
+		var executable string
+		ran := false
+		err := buildAndRun("cc", []string{"my file.c"}, func(program string, args ...string) error {
+			if program == "cc" {
+				if len(args) != 3 || args[0] != "my file.c" || args[1] != "-o" {
+					t.Fatal("incorrect compiler arguments", args)
+				}
+				executable = args[2]
+				return compileErr
+			}
+			if program != executable || len(args) != 0 {
+				t.Fatal("did not execute the fresh build", program, args)
+			}
+			ran = true
+			return nil
+		})
+		if ran != (compileErr == nil) || !errors.Is(err, compileErr) {
+			t.Fatalf("compile error %v, ran %t, returned %v", compileErr, ran, err)
+		}
+		if _, err := os.Stat(filepath.Dir(executable)); !os.IsNotExist(err) {
+			t.Fatal("build directory not cleaned up", err)
+		}
+	}
+}
+
+func TestSyntaxInEditor(t *testing.T) {
+	root := t.TempDir()
+	i := newIDE(root, config{IndentSize: 4})
+	i.newFile()
+	d := i.active
+	source := "/* 한글\n주석 */\n\tint main() { return 42; }\n"
+	d.editor.SetText(source, false)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	d.syntax.SetRect(0, 0, 45, 8)
+	colorAt := func(x, y int) tcell.Color {
+		t.Helper()
+		_, _, style, _ := screen.GetContent(x+1, y+1)
+		fg, _, _ := style.Decompose()
+		return fg
+	}
+	d.syntax.Draw(screen)
+	if colorAt(4, 2) != foreground {
+		t.Fatal("new document should use the default text color")
+	}
+	path := filepath.Join(root, "한글.c")
+	i.save(d, path, nil)
+	d.syntax.Draw(screen)
+	if colorAt(0, 1) == foreground || colorAt(4, 2) == foreground || colorAt(4, 2) == colorAt(0, 1) {
+		t.Fatal("multiline comment and tab-indented type must have distinct colors after Save As")
+	}
+	start := strings.Index(source, "42")
+	d.editor.Select(start, start+2)
+	d.syntax.Draw(screen)
+	if colorAt(24, 2) != tcell.ColorWhite {
+		t.Fatal("syntax color covered the selection")
+	}
+	d.editor.Replace(start, start+2, "\"한abc글\"")
+	d.syntax.Draw(screen)
+	if colorAt(25, 2) == foreground || colorAt(25, 2) == colorAt(4, 2) {
+		t.Fatal("Korean string not recolored after edit")
+	}
+	d.syntax.SetOffset(2, 4)
+	d.syntax.Draw(screen)
+	if colorAt(0, 0) != syntaxColors[chroma.KeywordType] {
+		t.Fatal("highlight shifted after scrolling")
+	}
+	i.save(d, filepath.Join(root, "plain.unknownformat"), nil)
+	d.syntax.Draw(screen)
+	if colorAt(0, 0) != foreground {
+		t.Fatal("unknown extension retained stale colors")
+	}
+	data, err := os.ReadFile(d.disk.path)
+	if err != nil || string(data) != strings.Replace(source, "42", "\"한abc글\"", 1) {
+		t.Fatal("highlighting altered saved bytes", err)
+	}
+}
+
+func TestEditorWorkflow(t *testing.T) {
+	root := t.TempDir()
+	i := newIDE(root, config{IndentSize: 4})
+	i.newFile()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	i.app.SetScreen(screen)
+	screen.SetSize(120, 36)
+	done := make(chan error, 1)
+	go func() { done <- i.app.Run() }()
+	t.Cleanup(func() {
+		i.app.Stop()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Error("IDE failed to stop")
+		}
+	})
+	check := func(predicate func() bool) {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for {
+			result := make(chan bool, 1)
+			go i.app.QueueUpdateDraw(func() { result <- predicate() })
+			select {
+			case ok := <-result:
+				if ok {
+					return
+				}
+			case <-deadline:
+				t.Fatal("IDE did not reach expected state")
+			}
+			select {
+			case <-deadline:
+				t.Fatal("IDE did not reach expected state")
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}
+	key := func(key tcell.Key) { screen.InjectKey(key, 0, tcell.ModNone) }
+	typeText := func(text string) {
+		for _, r := range text {
+			screen.InjectKey(tcell.KeyRune, r, tcell.ModNone)
+		}
+	}
+	check(func() bool { return i.active != nil && i.treeShown })
+	width, _ := screen.Size()
+	screen.InjectMouse(width-25, 0, tcell.Button1, tcell.ModNone)
+	screen.InjectMouse(width-25, 0, tcell.ButtonNone, tcell.ModNone)
+	check(func() bool { return i.dialog })
+	i.app.QueueUpdateDraw(func() {
+		x, y, _, _ := i.app.GetFocus().GetRect()
+		i.pages.MouseHandler()(tview.MouseLeftDown, tcell.NewEventMouse(x+2, y+2, tcell.Button1, tcell.ModNone), func(p tview.Primitive) { i.app.SetFocus(p) })
+		if i.active.editor.HasFocus() {
+			t.Error("menu press leaked through to the editor")
+		}
+	})
+	key(tcell.KeyEscape)
+	check(func() bool { return !i.dialog && i.app.GetFocus() == i.active.editor })
+	key(tcell.KeyCtrlB)
+	check(func() bool { return i.app.GetFocus() == i.tree })
+	key(tcell.KeyCtrlB)
+	check(func() bool { return i.app.GetFocus() == i.active.editor })
+	key(tcell.KeyCtrlR)
+	check(func() bool { return i.dialog })
+	key(tcell.KeyEscape)
+	check(func() bool { return !i.dialog })
+	key(tcell.KeyCtrlE)
+	check(func() bool { return i.dialog })
+	key(tcell.KeyEscape)
+	check(func() bool { return !i.dialog })
+	key(tcell.KeyCtrlO)
+	check(func() bool { return i.dialog })
+	typeText("한글.txt")
+	key(tcell.KeyEnter)
+	check(func() bool { return !i.dialog && i.active.disk.path == filepath.Join(root, "한글.txt") })
+	typeText("안녕하세요")
+	key(tcell.KeyTab)
+	typeText("code")
+	check(func() bool { return i.active.dirty() && i.active.editor.GetText() == "안녕하세요  code" })
+	key(tcell.KeyCtrlS)
+	check(func() bool {
+		data, _ := os.ReadFile(filepath.Join(root, "한글.txt"))
+		return !i.active.dirty() && string(data) == "안녕하세요  code"
+	})
+	key(tcell.KeyCtrlA)
+	key(tcell.KeyCtrlC)
+	key(tcell.KeyCtrlN)
+	key(tcell.KeyCtrlV)
+	check(func() bool { return i.active.disk.path == "" && i.active.editor.GetText() == "안녕하세요  code" })
+	key(tcell.KeyCtrlF)
+	check(func() bool { return i.dialog })
+	typeText("안녕")
+	key(tcell.KeyEnter)
+	check(func() bool { text, _, _ := i.active.editor.GetSelection(); return !i.dialog && text == "안녕" })
+	key(tcell.KeyCtrlW)
+	check(func() bool { return i.dialog })
+	key(tcell.KeyCtrlC)
+	check(func() bool { return !i.dialog && len(i.documents) == 3 })
+	key(tcell.KeyCtrlS)
+	check(func() bool { return i.dialog })
+	typeText("copy.txt")
+	key(tcell.KeyEnter)
+	check(func() bool {
+		data, _ := os.ReadFile(filepath.Join(root, "copy.txt"))
+		return string(data) == "안녕하세요  code"
+	})
+	if err := os.WriteFile(filepath.Join(root, "copy.txt"), []byte("external"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	typeText("!")
+	key(tcell.KeyCtrlS)
+	check(func() bool { return i.dialog })
+	key(tcell.KeyEscape)
+	check(func() bool {
+		data, _ := os.ReadFile(filepath.Join(root, "copy.txt"))
+		return !i.dialog && string(data) == "external" && i.active.dirty()
+	})
+	key(tcell.KeyF1)
+	check(func() bool { return i.dialog })
+	screen.SetSize(60, 18)
+	screen.PostEvent(tcell.NewEventResize(60, 18))
+	check(func() bool { return !i.treeShown && i.dialog })
+	key(tcell.KeyEscape)
+	check(func() bool { return !i.dialog && i.app.GetFocus() == i.active.editor })
+	i.app.QueueUpdateDraw(func() {
+		i.addDocument(&document{path: filepath.Join(root, "large.py"), text: strings.Repeat("# before\n", 700)})
+	})
+	i.app.QueueUpdateDraw(func() {
+		i.active.editor.Replace(0, len("# before"), "return 42")
+	})
+	check(func() bool {
+		v := i.active.syntax
+		return v.valid && len(v.spans) > 0 && v.spans[0].color == syntaxColors[chroma.Keyword]
+	})
+}
+
+func TestTaskExecutionReturnsAndReloadsFile(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "external.txt")
+	if err := os.WriteFile(path, []byte("before"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	i := newIDE(root, config{IndentSize: 4})
+	if err := i.openFile(path); err != nil {
+		t.Fatal(err)
+	}
+	screen := tcell.NewSimulationScreen("UTF-8")
+	i.app.SetScreen(screen)
+	defer screen.Fini()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GALAXY_IDE_TEST_CHILD", "1")
+	i.runTask(task{Name: "프로젝트 셸", Args: []string{executable, "-test.run=^TestTaskChild$", "--", path}})
+	if i.active.editor.GetText() != "외부 도구가 수정한 내용\n" || i.active.dirty() {
+		t.Fatal("task failed to return or reload a clean file", i.message)
+	}
+}
+
+func TestProjectBuildOverridesCompilerAndChecksOtherTabs(t *testing.T) {
+	i := newIDE(t.TempDir(), config{IndentSize: 4, Tasks: []task{
+		{Name: "검사", Group: "test", Args: []string{"make", "test"}},
+		{Name: "데모", Group: "build", Args: []string{"make", "demo"}},
+	}})
+	i.addDocument(&document{path: filepath.Join(i.root, "include.h")})
+	i.active.editor.SetText("change", false)
+	i.addDocument(&document{path: filepath.Join(i.root, "main.c")})
+	build, ok := i.defaultBuild()
+	if !ok || build.Group != "build" || build.Args[1] != "demo" {
+		t.Fatal(build)
+	}
+	i.handleKey(tcell.NewEventKey(tcell.KeyCtrlR, 0, tcell.ModNone))
+	if !i.dialog {
+		t.Fatal("build did not prompt for the dirty header")
+	}
+	i.dismiss()
+	i.newFile()
+	build, ok = i.defaultBuild()
+	if !ok || build.Group != "build" {
+		t.Fatal("project build requires an active source")
+	}
+	i.config.Tasks = nil
+	if _, ok := i.defaultBuild(); ok {
+		t.Fatal("blank tab should use the task menu")
+	}
+	i.activate(i.documents[1])
+	if fallback, ok := i.defaultBuild(); !ok || !fallback.buildAndRun {
+		t.Fatal("missing native fallback")
+	}
+}
+
+func TestTaskChild(t *testing.T) {
+	if os.Getenv("GALAXY_IDE_TEST_CHILD") != "1" {
+		return
+	}
+	if err := os.WriteFile(os.Args[len(os.Args)-1], []byte("외부 도구가 수정한 내용\n"), 0644); err != nil {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
