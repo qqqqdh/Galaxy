@@ -174,6 +174,8 @@ func (i *ide) makeDock() *tview.Flex {
 	i.dock.AddPage("검색", i.makeSearchPane(), true, false)
 	i.changeList = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)
 	i.dock.AddPage("변경사항", i.changeList, true, false)
+	i.hints = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)
+	i.dock.AddPage("자동완성", i.hints, true, false)
 	i.problemButton = tview.NewButton("문제 (0)").SetSelectedFunc(func() { i.openDock("문제") })
 	bar := tview.NewFlex().AddItem(i.problemButton, 14, 0, false).
 		AddItem(tview.NewButton("터미널").SetSelectedFunc(func() { i.openDock("터미널") }), 12, 0, false).
@@ -185,6 +187,7 @@ func (i *ide) makeDock() *tview.Flex {
 }
 
 func (i *ide) openDock(page string) {
+	i.clearHints()
 	i.dockOpen = true
 	i.dock.SwitchToPage(page)
 	if page == "터미널" {
@@ -201,6 +204,7 @@ func (i *ide) openDock(page string) {
 }
 
 func (i *ide) hideDock() {
+	i.clearHints()
 	i.dockOpen = false
 	i.app.SetFocus(i.active.editor)
 }

@@ -44,6 +44,15 @@ func (d *openDocument) name() string {
 }
 
 type ide struct {
+	clang                      clangClient
+	clangLife                  context.Context
+	stopClang, cancelHint      context.CancelFunc
+	hintTimer                  *time.Timer
+	hints                      *tview.List
+	priorDock                  string
+	priorDockOpen              bool
+	hintOffset                 int
+	acceptHint                 func(int)
 	changeList                 *tview.List
 	changesCancel, diffCancel  context.CancelFunc
 	searchField, pickerField   *tview.InputField
@@ -92,6 +101,7 @@ func newIDE(root string, config config) *ide {
 	tview.Styles.BorderColor = tcell.GetColor("#314054")
 	tview.TabSize = config.IndentSize
 	i := &ide{app: tview.NewApplication(), root: root, config: config, showTree: true}
+	i.clangLife, i.stopClang = context.WithCancel(context.Background())
 	i.pages, i.editors = tview.NewPages(), tview.NewPages()
 	i.tabs, i.body = tview.NewFlex(), tview.NewFlex()
 	i.status = tview.NewTextView().SetDynamicColors(true)
@@ -144,6 +154,12 @@ func newIDE(root string, config config) *ide {
 	i.app.SetInputCapture(i.handleKey)
 	var editorTitle string
 	i.app.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
+		if i.acceptHint != nil && i.active != nil {
+			_, a, b := i.active.editor.GetSelection()
+			if a != i.hintOffset || b != a {
+				i.clearHints()
+			}
+		}
 		title := "Galaxy IDE"
 		if (i.pickerField != nil && i.pickerField.HasFocus()) || i.searchField.HasFocus() ||
 			(!i.dialog && i.active != nil && i.active.editor.HasFocus() && !i.active.editor.HasSelection()) {
@@ -206,6 +222,9 @@ func (i *ide) addDocument(disk *document) {
 		i.message = ""
 		i.updateTab(d)
 		i.recordEdit(d)
+		if i.live && i.active == d {
+			i.scheduleCompletion(d)
+		}
 	})
 	d.editor.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEnter {
@@ -241,6 +260,7 @@ func (i *ide) updateTab(d *openDocument) {
 }
 
 func (i *ide) activate(d *openDocument) {
+	i.clearHints()
 	i.active = d
 	i.checkActive()
 	for _, item := range i.documents {
@@ -332,6 +352,35 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 			return tcell.NewEventKey(tcell.KeyCtrlC, 0, tcell.ModNone)
 		}
 		return event
+	}
+	if i.active != nil && i.active.editor.HasFocus() && clangLanguage(i.active.disk.path) != "" {
+		switch event.Key() {
+		case tcell.KeyF12, tcell.KeyCtrlRightSq:
+			i.askClang("definition", false)
+			return nil
+		case tcell.KeyCtrlSpace, tcell.KeyCtrlK:
+			i.askClang("completion", false)
+			return nil
+		}
+		if i.acceptHint != nil {
+			switch event.Key() {
+			case tcell.KeyTab:
+				i.acceptHint(i.hints.GetCurrentItem())
+				return nil
+			case tcell.KeyDown:
+				i.app.SetFocus(i.hints)
+				return nil
+			case tcell.KeyEscape:
+				i.clearHints()
+				return nil
+			}
+			i.clearHints()
+		}
+	}
+	if i.hints.HasFocus() && event.Key() == tcell.KeyEscape {
+		i.clearHints()
+		i.app.SetFocus(i.active.editor)
+		return nil
 	}
 	if event.Key() == tcell.KeyCtrlJ {
 		i.openDock("문제")
@@ -568,6 +617,9 @@ func (i *ide) quit(index int) {
 			}
 		}
 		i.cancelCheck()
+		i.clearHints()
+		i.stopClang()
+		i.clang.close()
 		if i.changesCancel != nil {
 			i.changesCancel()
 		}

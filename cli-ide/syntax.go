@@ -15,15 +15,16 @@ import (
 // The text area owns the document, selection, cursor and input. Only recolor its drawn cells.
 type syntaxView struct {
 	*tview.TextArea
-	app      *tview.Application
-	filename string
-	lexer    chroma.Lexer
-	revision atomic.Uint64
-	valid    bool
-	working  bool
-	tabSize  int
-	spans    []colorSpan
-	marks    []colorSpan
+	definitionSelection *[2]int
+	app                 *tview.Application
+	filename            string
+	lexer               chroma.Lexer
+	revision            atomic.Uint64
+	valid               bool
+	working             bool
+	tabSize             int
+	spans               []colorSpan
+	marks               []colorSpan
 }
 
 type colorSpan struct {
@@ -48,6 +49,12 @@ func (v *syntaxView) invalidate() {
 
 func (v *syntaxView) Draw(screen tcell.Screen) {
 	v.TextArea.Draw(screen)
+	// A newly opened target needs its line layout before byte offsets map to screen rows.
+	if r := v.definitionSelection; r != nil {
+		v.definitionSelection = nil
+		v.Select(r[0], r[1])
+		v.TextArea.Draw(screen)
+	}
 	if v.lexer == nil || v.GetTextLength() == 0 {
 		return
 	}

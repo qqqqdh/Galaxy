@@ -81,6 +81,21 @@ func (p nativeProject) includes(path string) bool {
 	return true
 }
 
+func (p nativeProject) walkSources(add func(string)) error {
+	return filepath.WalkDir(p.root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || path == p.root {
+			return err
+		}
+		if entry.IsDir() && (p.shallow || !p.includes(path)) {
+			return filepath.SkipDir
+		}
+		if entry.Type().IsRegular() && nativeLanguage(path) != "" && p.includes(path) {
+			add(path)
+		}
+		return nil
+	})
+}
+
 func (p nativeProject) buildArgs(active string) ([]string, error) {
 	var cFiles, cppFiles []string
 	add := func(path string) {
@@ -92,17 +107,10 @@ func (p nativeProject) buildArgs(active string) ([]string, error) {
 		}
 	}
 	add(active)
-	err := filepath.WalkDir(p.root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || path == p.root {
-			return err
-		}
-		if entry.IsDir() && (p.shallow || !p.includes(path)) {
-			return filepath.SkipDir
-		}
-		if entry.Type().IsRegular() && path != active && p.includes(path) {
+	err := p.walkSources(func(path string) {
+		if path != active {
 			add(path)
 		}
-		return nil
 	})
 	if err != nil {
 		return nil, err

@@ -22,6 +22,7 @@ func (m modalLayer) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, fu
 }
 
 func (i *ide) showDialog(content tview.Primitive, width, height int) {
+	i.clearHints()
 	i.dialog = true
 	i.dialogWidth, i.dialogHeight = width, height
 	i.dialogGrid = tview.NewGrid().AddItem(content, 1, 1, 1, 1, 0, 0, true)
@@ -99,6 +100,8 @@ func (i *ide) fileMenu() {
 		{"파일 열기", "Ctrl+O", i.openPrompt},
 		{"빠른 파일 열기", "Ctrl+P · 파일명 일부로 찾기", i.quickOpen},
 		{"프로젝트 전체 검색", "열린 문서의 편집 내용 포함", func() { i.openDock("검색") }},
+		{"C/C++ 자동완성", "Ctrl+K", func() { i.askClang("completion", false) }},
+		{"함수 정의로 이동", "Ctrl+] · F12", func() { i.askClang("definition", false) }},
 		{"새 파일", "Ctrl+N", i.newFile},
 		{"저장", "Ctrl+S", func() { i.save(i.active, "", nil) }},
 		{"다른 이름으로 저장", "현재 파일 경로를 새 이름으로 변경", func() {
@@ -228,6 +231,8 @@ Ctrl+O          파일 열기 또는 새 경로 입력
 Ctrl+P          파일명 일부로 빠른 열기
 하단 검색       프로젝트 전체 검색 · 결과를 누르거나 Enter로 이동
 하단 변경사항   Git 변경 목록 · 파일을 눌러 비교 · Esc로 목록 복귀
+Ctrl+K          C/C++ clangd 자동완성 · Tab 적용
+Ctrl+] / F12    커서에 있는 함수의 정의로 이동
 Ctrl+N          새 파일
 Ctrl+S          저장
 Ctrl+W          현재 탭 닫기
