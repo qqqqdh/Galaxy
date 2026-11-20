@@ -46,7 +46,7 @@ func TestClangdTwoFileProject(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
-			var client clangClient
+			var client languageClient
 			defer client.close()
 			project := nativeProject{root: dir}
 			edited := strings.Replace(saved, "return galaxy_add", "return galaxy_a", 1)

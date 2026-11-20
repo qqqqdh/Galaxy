@@ -25,7 +25,7 @@ galaxy-ide --version
 
 ## 사용
 
-C/C++, Go, Python, JavaScript, HTML, CSS, 셸 등은 파일 이름으로 언어를 판별해 문법을 강조합니다. 새 문서는 `main.c`처럼 이름을 붙여 저장하면 바로 색이 적용됩니다. 일반 텍스트는 기본 글자색으로 표시합니다.
+C/C++, Java, JavaScript, HTML, CSS, Go, Python, Rust, 셸 등은 파일 이름으로 언어를 판별해 문법을 강조합니다. 새 문서는 `main.c`처럼 이름을 붙여 저장하면 바로 색이 적용됩니다. 일반 텍스트는 기본 글자색으로 표시합니다.
 
 | 키 | 동작 |
 |---|---|
@@ -42,7 +42,7 @@ C/C++, Go, Python, JavaScript, HTML, CSS, 셸 등은 파일 이름으로 언어�
 | Tab / Enter | 들여쓰기 / 자동 들여쓰기 |
 | F1 / F2 | 도움말 / 파일 탐색기 표시 전환 |
 | F4 / Ctrl+B | 다음 탭 / 탐색기와 편집기 사이 이동 |
-| Ctrl+R | 프로젝트의 `build` 작업 실행 · 미지정 시 C/C++ 기본 빌드 또는 실행 메뉴 |
+| Ctrl+R | 프로젝트의 `build` 작업 실행 · 미지정 시 현재 파일 실행·웹 미리보기 또는 실행 메뉴 |
 | F5 / Ctrl+T | 실행 작업 메뉴 / 프로젝트 셸 |
 | Ctrl+E | 파일 메뉴 · 다른 이름으로 저장 · 설정 |
 
@@ -98,11 +98,39 @@ UTF-8 텍스트 파일을 8 MiB까지 편집합니다. 한글, UTF-8 BOM, LF/CRL
 
 편집 내용이 바뀔 때마다 사용자 전용 복구 파일에 기록합니다. 앱이 강제 종료되면 Ubuntu에서 `galaxy-ide`를 다시 실행하세요. 이름 없는 새 문서를 포함한 미저장 문서가 편집 탭으로 돌아옵니다. 원본 파일에 반영하려면 Ctrl+S를 누르세요. 저장하거나 문서를 닫으며 ‘버리기’를 선택하면 복구 기록도 정리됩니다. 기본 위치는 `~/.local/state/galaxy-ide/drafts`이며 `XDG_STATE_HOME` 설정을 따릅니다. 앱 데이터 삭제나 기기 분실에 대비한 외부 백업은 별도로 필요합니다.
 
-## C/C++ 자동완성과 정의 이동
+## 언어별 실행과 코드 지원
+
+프로젝트에 `build` 작업을 지정하면 Ctrl+R은 그 작업을 우선합니다. 기본 작업은 다음과 같습니다.
+
+| 파일 | Ctrl+R 기본 동작 | Ubuntu의 언어 서버 |
+|---|---|---|
+| Java (.java) | JDK의 `java 파일.java`로 실행 | `jdtls` |
+| JavaScript (.js, .mjs, .cjs) | Node.js로 실행 | `typescript-language-server` |
+| HTML (.html, .htm) | 프로젝트 로컬 서버 시작, 표시된 URL을 내장 브라우저로 열기 | `vscode-html-language-server` |
+| CSS (.css) | 로컬 서버에서 가장 가까운 상위 index.html을 미리보기 (없으면 프로젝트 파일 목록) | `vscode-css-language-server` |
+| Go (.go) | `go run 파일.go` | `gopls` |
+| Python (.py, .pyw) | `python3 파일.py` | `pyright-langserver` |
+| Rust (.rs) | rustc로 임시 실행 파일을 만들어 실행 | `rust-analyzer` |
+| C/C++ | 프로젝트 소스를 함께 빌드하고 실행 | `clangd` |
+
+색상 강조는 기본 제공됩니다. 자동완성(Ctrl+K, Tab으로 적용), 정의 이동(Ctrl+] 또는 F12), 문제 탭과 편집기 밑줄에는 언어 서버가 제공하는 결과가 표시됩니다. 서버에서 진단이나 정의 위치를 제공하는 범위는 언어와 프로젝트 설정에 따라 다릅니다. HTML/CSS 미리보기에는 Python 3이 필요하며, 서버는 기기의 루프백 주소에만 열립니다. Ctrl+C로 종료합니다. Go 모듈 전체, Cargo, Maven, Gradle 프로젝트는 아래 예처럼 `.galaxy-ide.json`의 build 작업으로 실행할 수 있습니다.
+
+```json
+{"tasks":[{"name":"Cargo 실행","group":"build","args":["cargo","run"]}]}
+```
+
+### Ubuntu에서 언어 도구 준비
+
+- Java는 JDK와 Eclipse JDT LS가 필요합니다. 사용 중인 JDK와 호환되는 릴리스의 `bin/jdtls`를 PATH에 추가하세요. [Eclipse JDT LS 배포 안내](https://github.com/eclipse-jdtls/eclipse.jdt.ls#installation)
+- JavaScript·HTML·CSS·Python 서버는 Node와 npm을 준비한 뒤 `npm install --global --prefix "$HOME/.local" typescript typescript-language-server vscode-langservers-extracted pyright`로 설치할 수 있습니다. Python 프로그램을 실행할 때는 `python3`도 필요합니다.
+- Go는 Ubuntu에서 `sudo apt install golang-go gopls`로 설치합니다. Rust는 rustup의 stable 도구 모음에서 `rustup component add rust-analyzer rust-src`로 서버와 표준 라이브러리 소스를 추가합니다.
+- Ubuntu의 PATH에 `~/.local/bin`과 사용하는 도구의 bin 폴더를 포함하고, 실행 중인 IDE를 다시 여세요.
+
+### C/C++ 프로젝트 인덱싱
 
 Ubuntu에서 `sudo apt install clangd`로 언어 서버를 설치한 뒤 프로젝트 폴더를 `galaxy-ide`로 여세요. C/C++ 파일에서 식별자 두 글자를 입력하거나 `.`, `->`, `::`를 입력하고 잠시 멈추면 하단에 후보가 뜹니다. 편집기에서 Tab을 누르면 첫 후보가 적용됩니다. ↓로 목록에 들어가 원하는 항목에서 Enter를 누르거나 항목을 터치할 수도 있습니다. Esc는 목록을 닫습니다.
 
-`Ctrl+K`로 직접 후보를 요청할 수 있습니다. 함수 이름에 커서를 두고 `Ctrl+]` 또는 F12를 누르면 정의가 있는 파일과 줄로 이동합니다. 물리 키보드가 단축키를 가로채면 상단 **파일** 메뉴의 **C/C++ 자동완성**과 **함수 정의로 이동**을 사용하세요.
+`Ctrl+K`로 직접 후보를 요청할 수 있습니다. 함수 이름에 커서를 두고 `Ctrl+]` 또는 F12를 누르면 정의가 있는 파일과 줄로 이동합니다. 물리 키보드가 단축키를 가로채면 상단 **파일** 메뉴의 **코드 자동완성**과 **함수 정의로 이동**을 사용하세요.
 
 clangd에는 열린 C/C++ 문서의 미저장 내용이 전달됩니다. 프로젝트의 컴파일 데이터베이스를 사용하며, 전용 프로젝트 폴더에 별도 설정이 없으면 소스와 `include/` 기준으로 임시 데이터베이스를 생성합니다. 매크로, 외부 라이브러리, 개별 컴파일 옵션을 쓰는 프로젝트는 실제 빌드에서 생성한 `compile_commands.json`을 사용하세요. 첫 인덱싱 중에는 파일 간 정의 이동 결과가 늦게 준비될 수 있습니다.
 

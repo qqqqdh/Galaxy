@@ -190,7 +190,11 @@ func (i *ide) checkActive() {
 	d := i.active
 	build, ok := nativeBuild(d.disk.path)
 	if !ok {
-		i.showProblems(nil, "C/C++ 소스 파일을 열면 자동 검사합니다")
+		if toolsFor(d.disk.path).server != "" {
+			i.checkLanguageDocument(d)
+		} else {
+			i.showProblems(nil, "자동 진단을 지원하는 파일을 여세요")
+		}
 		return
 	}
 	i.showProblems(nil, "검사 중…")
@@ -222,6 +226,35 @@ func (i *ide) checkActive() {
 			if ctx.Err() == nil {
 				i.showProblems(items, "문제 없음")
 			}
+		})
+	})
+}
+
+func (i *ide) checkLanguageDocument(d *openDocument) {
+	path, source := d.disk.path, d.editor.GetText()
+	tools := toolsFor(path)
+	files, p := i.languageFiles(tools.server), i.nativeProject()
+	i.showProblems(nil, tools.server+" 진단 대기 중")
+	ctx, cancel := context.WithCancel(i.languageLife)
+	i.cancel = cancel
+	i.timer = time.AfterFunc(550*time.Millisecond, func() {
+		data, err := i.languages.query(i.languageLife, ctx, p, files, path, lspPos{}, "diagnostic")
+		if ctx.Err() != nil || (err == nil && len(data) == 0) {
+			return
+		}
+		var diagnostics []languageDiagnostic
+		if err == nil {
+			err = json.Unmarshal(data, &diagnostics)
+		}
+		i.app.QueueUpdateDraw(func() {
+			if ctx.Err() != nil || i.active != d || d.editor.GetText() != source {
+				return
+			}
+			if err != nil {
+				i.showProblems(nil, err.Error())
+				return
+			}
+			i.showProblems((languageReport{path, source, diagnostics}).problems(), "문제 없음")
 		})
 	})
 }

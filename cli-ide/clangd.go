@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/textproto"
+
 	"net/url"
 	"os"
 	"os/exec"
@@ -24,17 +24,24 @@ type lspPos struct {
 	Line      int `json:"line"`
 	Character int `json:"character"`
 }
-type lspRange struct{ Start, End lspPos }
+type lspRange struct {
+	Start lspPos `json:"start"`
+	End   lspPos `json:"end"`
+}
 type completion struct {
 	Label, InsertText, FilterText, Detail string
+	InsertTextFormat                      int
 	TextEdit                              *struct {
-		Range   lspRange
+		Range   *lspRange
+		Replace *lspRange
 		NewText string
 	}
 }
 type location struct {
-	URI   string
-	Range lspRange
+	URI                  string
+	Range                lspRange
+	TargetURI            string
+	TargetSelectionRange lspRange
 }
 
 func fileURI(path string) string {
@@ -51,7 +58,7 @@ func uriPath(s string) (string, error) {
 	}
 	p := u.Path
 	if filepath.Separator == '\\' && len(p) >= 3 && p[0] == '/' && p[2] == ':' {
-		p = p[1:]
+		p = strings.ToUpper(p[1:2]) + p[2:]
 	}
 	p = filepath.FromSlash(p)
 	if !filepath.IsAbs(p) {
@@ -93,13 +100,22 @@ func bytePosition(s string, p lspPos) (int, bool) {
 	return len(s), units == p.Character
 }
 
-type clangServer struct {
-	cmd         *exec.Cmd
-	in          io.WriteCloser
-	out         *bufio.Reader
-	cacheDir    string
-	id, version int
-	open        map[string]string
+type languageServer struct {
+	name                         string
+	stdout                       io.ReadCloser
+	responses                    chan rpcMessage
+	done                         chan struct{}
+	writeMu                      sync.Mutex
+	documents                    sync.Map
+	reports                      sync.Map
+	onReport                     func(languageReport)
+	incremental, pullDiagnostics bool
+	cmd                          *exec.Cmd
+	in                           io.WriteCloser
+	out                          *bufio.Reader
+	cacheDir                     string
+	id, version                  int
+	open                         map[string]string
 }
 
 // Give plain source folders an index without writing build files into the project.
@@ -144,18 +160,25 @@ func compilationDir(p nativeProject) (string, error) {
 	return dir, nil
 }
 
-func startClang(ctx context.Context, p nativeProject) (*clangServer, error) {
-	bin, err := exec.LookPath("clangd")
+func startLanguageServer(ctx context.Context, p nativeProject, tools languageTools, onReport func(languageReport)) (*languageServer, error) {
+	bin, err := exec.LookPath(tools.server)
 	if err != nil {
-		return nil, errors.New("clangd 설치 필요 · sudo apt install clangd")
+		return nil, fmt.Errorf("%s 설치 필요 · IDE README의 언어별 설치 방법을 확인하세요", tools.server)
 	}
-	dir, err := compilationDir(p)
+	args := tools.args
+	dir := ""
+	switch tools.server {
+	case "clangd":
+		dir, err = compilationDir(p)
+		if dir != "" {
+			args = append(args, "--compile-commands-dir="+dir)
+		}
+	case "jdtls":
+		dir, err = os.MkdirTemp("", "galaxy-jdtls-*")
+		args = append(args, "--jvm-arg=-Xms64m", "--jvm-arg=-Xmx768m", "-data", dir)
+	}
 	if err != nil {
 		return nil, err
-	}
-	args := []string{"-j=2", "--background-index", "--header-insertion=never", "--limit-results=40", "--log=error"}
-	if dir != "" {
-		args = append(args, "--compile-commands-dir="+dir)
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = p.root
@@ -173,17 +196,26 @@ func startClang(ctx context.Context, p nativeProject) (*clangServer, error) {
 		os.RemoveAll(dir)
 		return nil, err
 	}
-	return &clangServer{cmd: cmd, in: in, out: bufio.NewReader(out), cacheDir: dir, open: map[string]string{}}, nil
+	s := &languageServer{cmd: cmd, in: in, stdout: out, out: bufio.NewReader(out), cacheDir: dir, open: map[string]string{}, name: tools.server, responses: make(chan rpcMessage, 1), done: make(chan struct{}), onReport: onReport}
+	go s.readLoop()
+	return s, nil
 }
-func (s *clangServer) close() {
+func (s *languageServer) close() {
+	timeout := time.AfterFunc(2*time.Second, func() { s.cmd.Process.Kill(); s.stdout.Close(); s.in.Close() })
+	if _, err := s.call("shutdown", nil); err == nil {
+		_ = s.notify("exit", nil)
+	}
+	close(s.done)
 	s.in.Close()
-	s.cmd.Process.Kill()
 	s.cmd.Wait()
+	timeout.Stop()
 	if s.cacheDir != "" {
 		os.RemoveAll(s.cacheDir)
 	}
 }
-func (s *clangServer) write(msg rpcParams) error {
+func (s *languageServer) write(msg rpcParams) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	msg["jsonrpc"] = "2.0"
 	b, err := json.Marshal(msg)
 	if err != nil {
@@ -195,42 +227,15 @@ func (s *clangServer) write(msg rpcParams) error {
 	_, err = s.in.Write(b)
 	return err
 }
-func (s *clangServer) notify(method string, params any) error {
+func (s *languageServer) notify(method string, params any) error {
 	return s.write(rpcParams{"method": method, "params": params})
 }
-func (s *clangServer) call(method string, params any) (json.RawMessage, error) {
+func (s *languageServer) call(method string, params any) (json.RawMessage, error) {
 	s.id++
 	if err := s.write(rpcParams{"method": method, "params": params, "id": s.id}); err != nil {
 		return nil, err
 	}
-	for {
-		h, err := textproto.NewReader(s.out).ReadMIMEHeader()
-		if err != nil {
-			return nil, err
-		}
-		n, err := strconv.Atoi(h.Get("Content-Length"))
-		if err != nil || n < 0 || n > 32<<20 {
-			return nil, errors.New("clangd 응답 길이 오류")
-		}
-		buf := make([]byte, n)
-		if _, err = io.ReadFull(s.out, buf); err != nil {
-			return nil, err
-		}
-		var msg struct {
-			ID     json.RawMessage
-			Method string
-			Result json.RawMessage
-			Error  *struct{ Message string }
-		}
-		if err = json.Unmarshal(buf, &msg); err != nil {
-			return nil, err
-		}
-		if msg.Method != "" && len(msg.ID) > 0 {
-			if err = s.write(rpcParams{"id": msg.ID, "error": rpcParams{"code": -32601, "message": "Unsupported client method"}}); err != nil {
-				return nil, err
-			}
-			continue
-		}
+	for msg := range s.responses {
 		if string(msg.ID) != strconv.Itoa(s.id) {
 			continue
 		}
@@ -239,27 +244,16 @@ func (s *clangServer) call(method string, params any) (json.RawMessage, error) {
 		}
 		return msg.Result, nil
 	}
+	return nil, fmt.Errorf("%s 연결이 종료됐습니다", s.name)
 }
-
-func clangLanguage(path string) string {
-	if nativeLanguage(path) == "c" {
-		return "c"
-	}
-	if nativeLanguage(path) == "c++" {
-		return "cpp"
-	}
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".h", ".hh", ".hpp", ".hxx", ".ipp":
-		return "cpp"
-	}
-	return ""
-}
-func (s *clangServer) syncFiles(files map[string]string) error {
+func (s *languageServer) syncFiles(files map[string]string) error {
 	for f := range s.open {
 		if _, ok := files[f]; !ok {
 			if err := s.notify("textDocument/didClose", rpcParams{"textDocument": rpcParams{"uri": fileURI(f)}}); err != nil {
 				return err
 			}
+			s.documents.Delete(f)
+			s.reports.Delete(f)
 			delete(s.open, f)
 		}
 	}
@@ -270,13 +264,19 @@ func (s *clangServer) syncFiles(files map[string]string) error {
 		}
 		s.version++
 		doc := rpcParams{"uri": fileURI(f), "version": s.version}
+		s.documents.Store(f, serverDocument{text, s.version})
+		s.reports.Delete(f)
 		var err error
 		if !ok {
-			doc["languageId"] = clangLanguage(f)
+			doc["languageId"] = toolsFor(f).id
 			doc["text"] = text
 			err = s.notify("textDocument/didOpen", rpcParams{"textDocument": doc})
 		} else {
-			err = s.notify("textDocument/didChange", rpcParams{"textDocument": doc, "contentChanges": []rpcParams{{"text": text}}})
+			change := rpcParams{"text": text}
+			if s.incremental {
+				change["range"] = lspRange{End: lspPosition(old, len(old))}
+			}
+			err = s.notify("textDocument/didChange", rpcParams{"textDocument": doc, "contentChanges": []rpcParams{change}})
 		}
 		if err != nil {
 			return err
@@ -286,12 +286,13 @@ func (s *clangServer) syncFiles(files map[string]string) error {
 	return nil
 }
 
-type clangClient struct {
-	mu     sync.Mutex
-	server *clangServer
+type languageClient struct {
+	onReport func(languageReport)
+	mu       sync.Mutex
+	server   *languageServer
 }
 
-func (c *clangClient) close() {
+func (c *languageClient) close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.server != nil {
@@ -299,25 +300,33 @@ func (c *clangClient) close() {
 		c.server = nil
 	}
 }
-func (c *clangClient) query(life, request context.Context, p nativeProject, files map[string]string, path string, pos lspPos, method string) (data json.RawMessage, err error) {
+func (c *languageClient) query(life, request context.Context, p nativeProject, files map[string]string, path string, pos lspPos, method string) (data json.RawMessage, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if request.Err() != nil {
 		return nil, request.Err()
 	}
-	if c.server != nil && c.server.cmd.Dir != p.root {
+	tools := toolsFor(path)
+	if tools.server == "" {
+		return nil, errors.New("지원하지 않는 언어입니다")
+	}
+	if c.server != nil && (c.server.cmd.Dir != p.root || c.server.name != tools.server) {
 		c.server.close()
 		c.server = nil
 	}
 	fresh := c.server == nil
 	if fresh {
-		c.server, err = startClang(life, p)
+		c.server, err = startLanguageServer(life, p, tools, c.onReport)
 		if err != nil {
 			return nil, err
 		}
 	}
 	s := c.server
-	timer := time.AfterFunc(30*time.Second, func() { s.cmd.Process.Kill() })
+	timeout := 30 * time.Second
+	if fresh && tools.server == "jdtls" {
+		timeout = 90 * time.Second
+	}
+	timer := time.AfterFunc(timeout, func() { s.cmd.Process.Kill(); s.stdout.Close() })
 	defer func() {
 		timer.Stop()
 		if err != nil {
@@ -326,16 +335,23 @@ func (c *clangClient) query(life, request context.Context, p nativeProject, file
 		}
 	}()
 	if fresh {
-		_, err = s.call("initialize", rpcParams{"processId": os.Getpid(), "rootUri": fileURI(p.root), "capabilities": rpcParams{"textDocument": rpcParams{"completion": rpcParams{"completionItem": rpcParams{"snippetSupport": false}}}}})
-		if err != nil {
+		if err = s.initialize(p.root); err != nil {
 			return nil, err
 		}
 		if err = s.notify("initialized", rpcParams{}); err != nil {
 			return nil, err
 		}
+		if s.name == "pyright-langserver" {
+			if err = s.notify("workspace/didChangeConfiguration", rpcParams{"settings": rpcParams{}}); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if err = s.syncFiles(files); err != nil {
 		return nil, err
+	}
+	if method == "diagnostic" {
+		return s.diagnostics(path)
 	}
 	return s.call("textDocument/"+method, rpcParams{"textDocument": rpcParams{"uri": fileURI(path)}, "position": pos})
 }

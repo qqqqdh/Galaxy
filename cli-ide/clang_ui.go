@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -39,10 +40,10 @@ func identStart(text string, at int) int {
 }
 func (i *ide) scheduleCompletion(d *openDocument) {
 	i.clearHints()
-	if clangLanguage(d.disk.path) == "" {
+	if toolsFor(d.disk.path).id == "" {
 		return
 	}
-	ctx, cancel := context.WithCancel(i.clangLife)
+	ctx, cancel := context.WithCancel(i.languageLife)
 	i.cancelHint = cancel
 	i.hintTimer = time.AfterFunc(350*time.Millisecond, func() {
 		if ctx.Err() != nil {
@@ -50,16 +51,16 @@ func (i *ide) scheduleCompletion(d *openDocument) {
 		}
 		i.app.QueueUpdateDraw(func() {
 			if ctx.Err() == nil && i.active == d && !i.dialog && d.editor.HasFocus() {
-				i.askClang("completion", true)
+				i.askLanguageServer("completion", true)
 			}
 		})
 	})
 }
-func (i *ide) askClang(method string, auto bool) {
+func (i *ide) askLanguageServer(method string, auto bool) {
 	i.clearHints()
 	d := i.active
-	if d == nil || clangLanguage(d.disk.path) == "" {
-		i.notify("먼저 C/C++ 파일을 여세요")
+	if d == nil || toolsFor(d.disk.path).id == "" {
+		i.notify("언어 서버를 지원하는 소스 파일을 여세요")
 		return
 	}
 	text := d.editor.GetText()
@@ -67,21 +68,17 @@ func (i *ide) askClang(method string, auto bool) {
 	if auto && (at != end || (at-identStart(text, at) < 2 && !strings.HasSuffix(text[:at], ".") && !strings.HasSuffix(text[:at], "->") && !strings.HasSuffix(text[:at], "::"))) {
 		return
 	}
-	ctx, cancel := context.WithCancel(i.clangLife)
+	ctx, cancel := context.WithCancel(i.languageLife)
 	i.cancelHint = cancel
-	files := map[string]string{}
-	for _, tab := range i.documents {
-		if clangLanguage(tab.disk.path) != "" {
-			files[tab.disk.path] = tab.editor.GetText()
-		}
-	}
+	tools := toolsFor(d.disk.path)
+	files := i.languageFiles(tools.server)
 	p := i.nativeProject()
 	path := d.disk.path
 	if !auto {
-		i.notify("clangd 조회 중…")
+		i.notify(tools.server + " 조회 중…")
 	}
 	go func() {
-		data, err := i.clang.query(i.clangLife, ctx, p, files, path, lspPosition(text, at), method)
+		data, err := i.languages.query(i.languageLife, ctx, p, files, path, lspPosition(text, at), method)
 		if ctx.Err() != nil {
 			return
 		}
@@ -95,7 +92,7 @@ func (i *ide) askClang(method string, auto bool) {
 			}
 			if err != nil {
 				if !auto {
-					i.notify("clangd · " + err.Error())
+					i.notify(tools.server + " · " + err.Error())
 				}
 				return
 			}
@@ -110,9 +107,19 @@ func (i *ide) askClang(method string, auto bool) {
 					return
 				}
 			}
+			prefix := strings.ToLower(text[identStart(text, at):at])
+			if prefix != "" && tools.server != "clangd" {
+				result.Items = slices.DeleteFunc(result.Items, func(c completion) bool {
+					label := c.FilterText
+					if label == "" {
+						label = strings.TrimSpace(c.Label)
+					}
+					return !strings.HasPrefix(strings.ToLower(label), prefix)
+				})
+			}
 			if len(result.Items) == 0 {
 				if !auto {
-					i.notify("clangd 자동완성 후보 없음")
+					i.notify(tools.server + " 자동완성 후보 없음")
 				}
 				return
 			}
@@ -135,12 +142,19 @@ func (i *ide) askClang(method string, auto bool) {
 				start, finish := identStart(text, at), end
 				value := item.InsertText
 				if item.TextEdit != nil {
+					r := item.TextEdit.Range
+					if r == nil {
+						r = item.TextEdit.Replace
+					}
+					if r == nil {
+						return
+					}
 					var ok bool
-					start, ok = bytePosition(text, item.TextEdit.Range.Start)
+					start, ok = bytePosition(text, r.Start)
 					if !ok {
 						return
 					}
-					finish, ok = bytePosition(text, item.TextEdit.Range.End)
+					finish, ok = bytePosition(text, r.End)
 					if !ok || finish < start {
 						return
 					}
@@ -148,7 +162,13 @@ func (i *ide) askClang(method string, auto bool) {
 				} else if value == "" {
 					value = strings.TrimSpace(item.Label)
 				}
-				d.editor.Replace(start, finish, value)
+				if item.InsertTextFormat==2 {
+     expanded,a,b,ok:=webSnippet(value)
+     if ok {
+      d.editor.Replace(start,finish,expanded)
+      d.editor.Select(start+a,start+b)
+     }else{d.editor.Replace(start,finish,strings.TrimSpace(item.Label))}
+    }else{d.editor.Replace(start,finish,value)}
 				i.clearHints()
 			}
 			for n, item := range result.Items {
@@ -161,7 +181,7 @@ func (i *ide) askClang(method string, auto bool) {
 			i.dockOpen = true
 			i.dock.SwitchToPage("자동완성")
 			i.app.SetFocus(d.editor)
-			i.notify(fmt.Sprintf("clangd 자동완성 %d개 · Tab 적용 · ↓ 목록 · Esc 닫기", len(result.Items)))
+			i.notify(fmt.Sprintf("%s 자동완성 %d개 · Tab 적용 · ↓ 목록 · Esc 닫기", tools.server, len(result.Items)))
 		})
 	}()
 }
@@ -176,10 +196,13 @@ func (i *ide) jumpDefinition(data json.RawMessage) {
 		locations = []location{one}
 	}
 	if len(locations) == 0 {
-		i.notify("clangd가 정의를 찾지 못했습니다")
+		i.notify("정의를 찾지 못했습니다")
 		return
 	}
 	target := locations[0]
+	if target.URI == "" && target.TargetURI != "" {
+		target.URI, target.Range = target.TargetURI, target.TargetSelectionRange
+	}
 	path, err := uriPath(target.URI)
 	if err == nil {
 		err = i.openFile(path)
@@ -200,4 +223,14 @@ func (i *ide) jumpDefinition(data json.RawMessage) {
 	}
 	i.active.syntax.definitionSelection = &[2]int{start, end}
 	i.notify(fmt.Sprintf("정의 · %s · %d행", i.active.name(), target.Range.Start.Line+1))
+}
+
+func (i *ide) languageFiles(server string) map[string]string {
+	files := map[string]string{}
+	for _, d := range i.documents {
+		if toolsFor(d.disk.path).server == server {
+			files[d.disk.path] = d.editor.GetText()
+		}
+	}
+	return files
 }

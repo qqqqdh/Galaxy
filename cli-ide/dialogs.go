@@ -100,8 +100,8 @@ func (i *ide) fileMenu() {
 		{"파일 열기", "Ctrl+O", i.openPrompt},
 		{"빠른 파일 열기", "Ctrl+P · 파일명 일부로 찾기", i.quickOpen},
 		{"프로젝트 전체 검색", "열린 문서의 편집 내용 포함", func() { i.openDock("검색") }},
-		{"C/C++ 자동완성", "Ctrl+K", func() { i.askClang("completion", false) }},
-		{"함수 정의로 이동", "Ctrl+] · F12", func() { i.askClang("definition", false) }},
+		{"코드 자동완성", "Ctrl+K", func() { i.askLanguageServer("completion", false) }},
+		{"함수 정의로 이동", "Ctrl+] · F12", func() { i.askLanguageServer("definition", false) }},
 		{"새 파일", "Ctrl+N", i.newFile},
 		{"저장", "Ctrl+S", func() { i.save(i.active, "", nil) }},
 		{"다른 이름으로 저장", "현재 파일 경로를 새 이름으로 변경", func() {
@@ -231,7 +231,7 @@ Ctrl+O          파일 열기 또는 새 경로 입력
 Ctrl+P          파일명 일부로 빠른 열기
 하단 검색       프로젝트 전체 검색 · 결과를 누르거나 Enter로 이동
 하단 변경사항   Git 변경 목록 · 파일을 눌러 비교 · Esc로 목록 복귀
-Ctrl+K          C/C++ clangd 자동완성 · Tab 적용
+Ctrl+K          언어 서버 자동완성 · Tab 적용
 Ctrl+] / F12    커서에 있는 함수의 정의로 이동
 Ctrl+N          새 파일
 Ctrl+S          저장
@@ -255,7 +255,7 @@ Tab / Enter     들여쓰기 / 자동 들여쓰기
 Android 클립보드는 터미널의 붙여넣기 메뉴 또는 Ctrl+Shift+V를 사용하세요.
 
 [#8edbc6]실행과 확장[-]
-Ctrl+R          프로젝트 build 작업 · 기본 C/C++ 빌드 후 실행
+Ctrl+R          프로젝트 build 작업 · 현재 언어 실행 또는 웹 미리보기
 실행 메뉴       프로젝트 test 작업 선택
 F5              실행 작업과 Codex · Claude Code · AGY
 Ctrl+J          문제 목록 · Enter로 오류 위치 이동

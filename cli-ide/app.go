@@ -44,9 +44,9 @@ func (d *openDocument) name() string {
 }
 
 type ide struct {
-	clang                      clangClient
-	clangLife                  context.Context
-	stopClang, cancelHint      context.CancelFunc
+	languages                  languageClient
+	languageLife               context.Context
+	stopLanguages, cancelHint  context.CancelFunc
 	hintTimer                  *time.Timer
 	hints                      *tview.List
 	priorDock                  string
@@ -101,7 +101,17 @@ func newIDE(root string, config config) *ide {
 	tview.Styles.BorderColor = tcell.GetColor("#314054")
 	tview.TabSize = config.IndentSize
 	i := &ide{app: tview.NewApplication(), root: root, config: config, showTree: true}
-	i.clangLife, i.stopClang = context.WithCancel(context.Background())
+	i.languageLife, i.stopLanguages = context.WithCancel(context.Background())
+	i.languages.onReport = func(report languageReport) {
+		if toolsFor(report.path).server == "clangd" || i.languageLife.Err() != nil {
+			return
+		}
+		go i.app.QueueUpdateDraw(func() {
+			if i.active != nil && i.active.disk.path == report.path && i.active.editor.GetText() == report.text {
+				i.showProblems(report.problems(), "문제 없음")
+			}
+		})
+	}
 	i.pages, i.editors = tview.NewPages(), tview.NewPages()
 	i.tabs, i.body = tview.NewFlex(), tview.NewFlex()
 	i.status = tview.NewTextView().SetDynamicColors(true)
@@ -353,13 +363,13 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return event
 	}
-	if i.active != nil && i.active.editor.HasFocus() && clangLanguage(i.active.disk.path) != "" {
+	if i.active != nil && i.active.editor.HasFocus() && toolsFor(i.active.disk.path).id != "" {
 		switch event.Key() {
 		case tcell.KeyF12, tcell.KeyCtrlRightSq:
-			i.askClang("definition", false)
+			i.askLanguageServer("definition", false)
 			return nil
 		case tcell.KeyCtrlSpace, tcell.KeyCtrlK:
-			i.askClang("completion", false)
+			i.askLanguageServer("completion", false)
 			return nil
 		}
 		if i.acceptHint != nil {
@@ -618,8 +628,8 @@ func (i *ide) quit(index int) {
 		}
 		i.cancelCheck()
 		i.clearHints()
-		i.stopClang()
-		i.clang.close()
+		i.stopLanguages()
+		i.languages.close()
 		if i.changesCancel != nil {
 			i.changesCancel()
 		}

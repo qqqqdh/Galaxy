@@ -138,12 +138,8 @@ func (i *ide) taskMenu() {
 		{Name: "AGY", Args: []string{"agy"}},
 		{Name: "Git 상태", Args: []string{"git", "status", "--short", "--branch"}},
 	}
-	commands := map[string][]string{
-		".py": {"python3", "{file}"}, ".js": {"node", "{file}"}, ".mjs": {"node", "{file}"},
-		".go": {"go", "run", "{file}"}, ".sh": {"bash", "{file}"},
-	}
-	if args, ok := commands[strings.ToLower(filepath.Ext(i.active.disk.path))]; ok {
-		tasks = append([]task{{Name: "현재 파일 실행", Args: args}}, tasks...)
+	if t, ok := fileTask(i.active.disk.path, i.nativeProject().root); ok {
+		tasks = append([]task{t}, tasks...)
 	}
 	if build, ok := nativeBuild(i.active.disk.path); ok {
 		check := task{Name: "현재 파일 문법 검사", Args: append([]string{build.Args[0], "-fsyntax-only"}, build.Args[1:]...)}
@@ -183,7 +179,10 @@ func (i *ide) defaultBuild() (task, bool) {
 	if t, ok := i.config.groupTask("build"); ok {
 		return t, true
 	}
-	return nativeBuild(i.active.disk.path)
+	if t, ok := nativeBuild(i.active.disk.path); ok {
+		return t, true
+	}
+	return fileTask(i.active.disk.path, i.nativeProject().root)
 }
 
 func (i *ide) runTask(t task) {
