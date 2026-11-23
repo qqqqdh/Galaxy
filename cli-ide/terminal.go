@@ -22,7 +22,6 @@ type shellPane struct {
 	message string
 	scroll  int
 	claude  bool
-	draftAt *uv.Position
 }
 
 func (s *shellPane) start(dir string) {
@@ -103,7 +102,6 @@ func termColor(c color.Color, fallback tcell.Color) tcell.Color {
 }
 
 func (s *shellPane) Draw(screen tcell.Screen) {
-	s.draftAt = nil
 	s.Box.DrawForSubclass(screen, s)
 	x, y, w, h := s.GetInnerRect()
 	if w < 2 || h < 1 {
@@ -154,44 +152,10 @@ func (s *shellPane) Draw(screen tcell.Screen) {
 			screen.SetContent(x+col, y+row, r[0], r[1:], style)
 		}
 	}
-	if s.file != nil && s.scroll == 0 && s.HasFocus() {
-		if !em.CursorHidden() {
-			p := em.CursorPosition()
-			screen.ShowCursor(x+p.X, y+p.Y)
-		} else if s.claude {
-			if p := claudePromptCaret(w, h, cellAt); p != nil {
-				s.draftAt = &uv.Position{X: x + p.X, Y: y + p.Y}
-			}
-		}
+	if s.file != nil && s.scroll == 0 && s.HasFocus() && !em.CursorHidden() {
+		p := em.CursorPosition()
+		screen.ShowCursor(x+p.X, y+p.Y)
 	}
-}
-
-func claudePromptCaret(width, height int, cellAt func(int, int) *uv.Cell) *uv.Position {
-	for row := height - 1; row >= 0; row-- {
-		marker := cellAt(0, row)
-		if marker == nil || marker.Content != "❯" {
-			continue
-		}
-		// Claude hides the hardware cursor and paints one inverse cell in its prompt.
-		var caret *uv.Position
-		for y := row; y < height; y++ {
-			if first := cellAt(0, y); y > row && first != nil && first.Content == "─" {
-				break
-			}
-			for x := 0; x < width; x++ {
-				cell := cellAt(x, y)
-				if cell == nil || cell.Width == 0 || cell.Style.Attrs&uv.AttrReverse == 0 {
-					continue
-				}
-				if caret != nil {
-					return nil
-				}
-				caret = &uv.Position{X: x, Y: y}
-			}
-		}
-		return caret
-	}
-	return nil
 }
 
 var terminalKeys = map[tcell.Key]rune{

@@ -56,7 +56,6 @@ let atPrompt = false;
 let liveEditor = false;
 let nativeTerminal = false;
 let nativeDraft = '';
-let draftAnchor;
 let inGalaxyIDE = false;
 let liveRange = { text: '' };
 let composing;
@@ -181,11 +180,14 @@ function updateInputMode() {
   Android.editorMode?.(mode);
 }
 function setEditorTitle(title) {
-  const anchor = inEditorScreen() && /^Galaxy IDE · 터미널 (\d+),(\d+)$/.exec(title);
-  draftAnchor = anchor ? { x: Number(anchor[1]), y: Number(anchor[2]) } : null;
-  inGalaxyIDE = inEditorScreen() && (title === 'Galaxy IDE' || title === 'Galaxy IDE · 편집');
-  const enabled = inGalaxyIDE && title === 'Galaxy IDE · 편집';
-  if (liveEditor === enabled) { updateInputMode(); positionDraft(); return; }
+  const alternate = inEditorScreen();
+  const claudePrompt = alternate && title === 'Galaxy IDE · Claude Code';
+  inGalaxyIDE = alternate && (title === 'Galaxy IDE' || title === 'Galaxy IDE · 편집');
+  const enabled = claudePrompt || (inGalaxyIDE && title === 'Galaxy IDE · 편집');
+  if (liveEditor === enabled) {
+    if (!claudePrompt) updateInputMode();
+    return;
+  }
   composing = settling = editorCommit = null;
   imeInputPending = false;
   draftView.hidden = true;
@@ -232,8 +234,8 @@ function syncLiveRange() {
 function positionDraft() {
   if (!composing?.preview && !nativeDraft) return;
   const cursor = term.buffer.active;
-  draftView.style.left = Math.min(draftAnchor?.x ?? cursor.cursorX, term.cols - 1) * 100 / term.cols + '%';
-  draftView.style.top = Math.min(draftAnchor?.y ?? cursor.cursorY, term.rows - 1) * 100 / term.rows + '%';
+  draftView.style.left = Math.min(cursor.cursorX, term.cols - 1) * 100 / term.cols + '%';
+  draftView.style.top = cursor.cursorY * 100 / term.rows + '%';
   draftView.style.height = 100 / term.rows + '%';
 }
 term.onRender(positionDraft);
@@ -248,7 +250,7 @@ function finishComposition(clearInput) {
   if (clearInput) term.textarea.value = '';
 }
 
-// Only the Galaxy IDE text cursor opts into live edits. Selections and other TUIs get a preview.
+// The IDE editor and Claude's prompt opt into live edits. Other TUIs get a preview.
 host.addEventListener('compositionstart', event => {
   if (event.target !== term.textarea) return;
   imeInputPending = false;

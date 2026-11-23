@@ -4,11 +4,11 @@
 
 ## 설치와 사용
 
-1. [Galaxy Terminal 0.4.13 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.13)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
+1. [Galaxy Terminal 0.4.14 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.14)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
 2. Galaxy Terminal을 열고 물리 키보드를 사용하거나, 상단 **키보드**를 눌러 한국어가 설정된 Android 키보드를 엽니다.
 3. `echo '한글 입력 확인'`을 입력합니다. `pwd`로 현재 디렉터리, `stty size`로 터미널 크기를 확인할 수 있습니다.
 
-- Android 셸과 Ubuntu Bash 프롬프트에는 한글 조합 중인 글자도 실시간으로 입력됩니다. `ㅎ → 하 → 한`처럼 바뀌고 확정된 글자는 한 번만 남습니다. 실행 중인 명령의 입력에는 확정된 글자를 보냅니다.
+- Android 셸, Ubuntu Bash 프롬프트, Galaxy IDE 0.1.19 이상에서 열린 Claude Code 입력창에는 조합 중인 한글이 실시간으로 입력됩니다. `ㅎ → 하 → 한`처럼 바뀌고 확정된 글자는 한 번만 남습니다.
 - 트랙패드로 두 손가락 스크롤하면 이전 출력을 볼 수 있습니다. 클릭한 채 드래그해 텍스트를 선택하고, 우클릭 메뉴 또는 상단 **⋯**에서 복사하거나 붙여넣을 수 있습니다.
 - 물리 키보드의 복사와 붙여넣기는 `Ctrl+Shift+C`와 `Ctrl+Shift+V`입니다. `Ctrl+C`는 실행 중인 명령에 인터럽트를 보냅니다. 화면 아래의 **Ctrl**은 다음 한 글자에 적용됩니다.
 - `exit`로 셸을 종료하면 **새 셸** 버튼이 나타납니다. 작업 파일은 앱의 내부 저장공간에 저장됩니다. 앱을 삭제하거나 데이터를 지우면 파일도 삭제됩니다.

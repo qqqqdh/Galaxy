@@ -224,13 +224,20 @@ async function main() {
             else edited.push(ch);
         }
         assert.equal(edited.join(''), Array(3).fill('한abc글 ').join('\r'));
-        await page.evaluate(() => new Promise(done => term.write('\x1b[6;2H\x1b]2;Galaxy IDE · 터미널 12,3\x07', done)));
-        await page.evaluate(() => nativeTerminalDraft('한'));
-        assert(await page.evaluate(() => Math.abs(parseFloat(draftView.style.left) - 12 * 100 / term.cols) < 0.001 &&
-            Math.abs(parseFloat(draftView.style.top) - 3 * 100 / term.rows) < 0.001));
         await page.evaluate(() => new Promise(done => term.write('\x1b]2;Galaxy IDE · 터미널\x07', done)));
-        assert(await page.evaluate(() => Math.abs(parseFloat(draftView.style.left) - 100 / term.cols) < 0.001 &&
-            Math.abs(parseFloat(draftView.style.top) - 5 * 100 / term.rows) < 0.001));
+        await page.evaluate(() => nativeTerminalDraft('한'));
+        assert(await page.locator('.ide-draft').isVisible());
+        await page.evaluate(() => new Promise(done => term.write('\x1b]2;Galaxy IDE · Claude Code\x07', done)));
+        await page.evaluate(() => { calls.input.length = 0; nativeEditorEdit('', 'ㅎ'); });
+        assert.deepEqual(await page.evaluate(() => calls.input), ['ㅎ']);
+        await page.evaluate(() => new Promise(done => term.write('\x1b[?25l\x1b[4;10H\x1b[?25h', done)));
+        await page.evaluate(() => {
+            nativeEditorEdit('ㅎ', '하');
+            nativeEditorEdit('하', '한');
+            nativeEditorEdit('한', '한');
+        });
+        assert.deepEqual(await page.evaluate(() => calls.input), ['ㅎ', '\x7f하', '\x7f한']);
+        assert(await page.locator('.ide-draft').isHidden());
         await page.evaluate(() => nativeTerminalDraft(''));
         await page.evaluate(() => new Promise(done => term.write('\x1b]2;Galaxy IDE\x07', done)));
         await page.keyboard.press('Escape');

@@ -179,11 +179,10 @@ func newIDE(root string, config config) *ide {
 	i.app.SetAfterDrawFunc(func(screen tcell.Screen) {
 		i.drawHints(screen)
 		title := "Galaxy IDE"
-		if i.shell.HasFocus() || i.assistant.HasFocus() {
+		if i.assistant.HasFocus() && i.assistant.file != nil && i.assistant.claude {
+			title = "Galaxy IDE · Claude Code"
+		} else if i.shell.HasFocus() || i.assistant.HasFocus() {
 			title = "Galaxy IDE · 터미널"
-			if p := i.assistant.draftAt; i.assistant.HasFocus() && p != nil {
-				title += fmt.Sprintf(" %d,%d", p.X, p.Y)
-			}
 		} else if (i.pickerField != nil && i.pickerField.HasFocus()) || i.searchField.HasFocus() ||
 			(!i.dialog && i.active != nil && i.active.editor.HasFocus() && !i.active.editor.HasSelection()) {
 			title = "Galaxy IDE · 편집"
