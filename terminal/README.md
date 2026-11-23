@@ -4,7 +4,7 @@
 
 ## 설치와 사용
 
-1. [Galaxy Terminal 0.4.9 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.9)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
+1. [Galaxy Terminal 0.4.10 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.10)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
 2. Galaxy Terminal을 열고 물리 키보드를 사용하거나, 상단 **키보드**를 눌러 한국어가 설정된 Android 키보드를 엽니다.
 3. `echo '한글 입력 확인'`을 입력합니다. `pwd`로 현재 디렉터리, `stty size`로 터미널 크기를 확인할 수 있습니다.
 
@@ -36,6 +36,14 @@ Ubuntu 셸과 Galaxy IDE 하단 터미널은 별도의 TTY로 로그인 목록�
 
 터미널 상단의 **브라우저**를 눌러 웹 주소나 검색어를 입력합니다. 검색어는 Google 검색으로 열립니다. 일반 사이트는 HTTPS로 열리고, 기기에서 실행 중인 서버는 `http://127.0.0.1:8080` 또는 `localhost:8080`처럼 입력할 수 있습니다. 서버가 다른 포트를 사용한다면 주소의 포트를 바꾸세요. 브라우저에서 **터미널**을 누르면 실행 중이던 셸로 돌아갑니다.
 
+0.4.10부터 터미널 출력의 URL을 클릭하면 해당 주소가 내장 브라우저에서 바로 열립니다. 긴 주소가 여러 줄에 걸쳐 표시된 경우와 OSC 8 링크도 지원합니다. HTTPS와 기기 내부 HTTP 주소에 기존 브라우저의 주소 검증 규칙을 동일하게 적용합니다.
+
+## 0.4.10 변경
+
+- Codex 등 실행 중인 프로그램의 입력에 기존 IDE용 Android 입력창을 확장 적용했습니다. Android가 조합 범위와 커서를 관리하고, 확정된 부분만 터미널에 보내며 조합 중인 글자는 커서 옆에 미리 표시합니다. Enter도 같은 입력창에서 처리해 빠른 한영 전환과 연속 입력 중 문맥이 끊기지 않도록 했습니다.
+- WebView 입력 경로에서도 조합 확정 알림과 동일한 문자·입력값이 다시 들어오면 재전송하지 않습니다. 실제로 반복 입력한 글자는 유지합니다.
+- 터미널 링크를 클릭하면 내장 브라우저로 주소를 전달합니다.
+
 ## Windows 빌드
 
 PowerShell 7, JDK, Node.js, Android SDK API 35, Build Tools 35.0.0, NDK 28.2.13676358을 사용합니다. 저장소 루트의 `.build-cache/android`를 SDK 경로로 사용합니다. Android SDK Command-line Tools가 PATH에 있다면 아래 명령으로 필요한 구성 요소를 설치할 수 있습니다.
@@ -47,3 +55,5 @@ npm --prefix terminal ci --ignore-scripts
 ```
 
 빌드 결과는 `dist/Galaxy-Terminal.apk`입니다. 최초 빌드는 SHA-256으로 고정된 PRoot 실행기와 소스를 GitHub에서 받아 APK에 포함합니다. 업데이트 설치가 필요하면 `.build-cache/terminal/terminal-dev.jks`를 보관하세요. `node terminal/smoke.cjs`로 화면과 키 입력을 검사할 수 있습니다. 기존 Galaxy Code의 Playwright 캐시와 Microsoft Edge를 사용합니다.
+
+Edge 대신 Chrome으로 검사하려면 `$env:TERMINAL_TEST_BROWSER = 'chrome'`을 설정한 뒤 같은 검사 명령을 실행합니다.

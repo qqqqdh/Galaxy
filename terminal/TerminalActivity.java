@@ -89,7 +89,10 @@ public class TerminalActivity extends Activity {
         layout.addView(browser, new FrameLayout.LayoutParams(-1, -1));
         editorInput = new EditorInput(this, new EditorInput.Listener() {
             @Override public void edit(String erased, String inserted) {
-                if (editorMode == 2) evaluate("nativeEditorEdit(" + JSONObject.quote(erased) + "," + JSONObject.quote(inserted) + ")");
+                if (editorMode >= 2) evaluate("nativeEditorEdit(" + JSONObject.quote(erased) + "," + JSONObject.quote(inserted) + ")");
+            }
+            @Override public void preview(String text) {
+                evaluate("nativeTerminalDraft(" + JSONObject.quote(text) + ")");
             }
             @Override public boolean terminalKey(KeyEvent event) {
                 return browser != null && browser.dispatchKeyEvent(event);
@@ -116,7 +119,7 @@ public class TerminalActivity extends Activity {
             switch (name) {
                 case "index.html": mime = "text/html"; break;
                 case "terminal.css": case "xterm.css": mime = "text/css"; break;
-                case "terminal.js": case "xterm.js": case "addon-fit.js": mime = "text/javascript"; break;
+                case "terminal.js": case "xterm.js": case "addon-fit.js": case "addon-web-links.js": mime = "text/javascript"; break;
                 default: return missing();
             }
             try {
@@ -217,10 +220,11 @@ public class TerminalActivity extends Activity {
     private final class Bridge {
         @JavascriptInterface public void editorMode(int mode) {
             runOnUiThread(() -> {
-                if (browser == null || mode < 0 || mode > 2) return;
-                boolean wasEditing = editorMode == 2;
+                if (browser == null || mode < 0 || mode > 3) return;
+                boolean wasEditing = editorMode >= 2;
+                editorInput.setCommitOnly(mode == 3);
                 editorMode = mode;
-                if (mode == 2) {
+                if (mode >= 2) {
                     editorInput.setVisibility(View.VISIBLE);
                     if (!editorInput.hasFocus()) editorInput.requestFocus();
                 } else if (wasEditing) {
@@ -233,7 +237,7 @@ public class TerminalActivity extends Activity {
         }
 
         @JavascriptInterface public void resetEditorContext() {
-            runOnUiThread(() -> { if (editorMode == 2) editorInput.resetContext(); });
+            runOnUiThread(() -> { if (editorMode >= 2) editorInput.finishContext(); });
         }
         @JavascriptInterface public boolean isUbuntuSession() { return isUbuntu(); }
 
@@ -252,6 +256,19 @@ public class TerminalActivity extends Activity {
         @JavascriptInterface public void openBrowser() {
             runOnUiThread(() -> {
                 if (browser != null) startActivity(new Intent(TerminalActivity.this, BrowserActivity.class));
+            });
+        }
+
+        @JavascriptInterface public void openLink(String url) {
+            runOnUiThread(() -> {
+                if (browser == null) return;
+                if (!WebAddress.allowed(url)) {
+                    evaluate("notice('HTTPS 주소 또는 기기 내부 HTTP 주소를 열 수 있습니다.')");
+                    return;
+                }
+                Intent intent = new Intent(TerminalActivity.this, BrowserActivity.class);
+                intent.putExtra(BrowserActivity.EXTRA_URL, url);
+                startActivity(intent);
             });
         }
 
@@ -283,7 +300,7 @@ public class TerminalActivity extends Activity {
         @JavascriptInterface public void keyboard() {
             runOnUiThread(() -> {
                 if (browser == null) return;
-                View target = editorMode == 2 ? editorInput : browser;
+                View target = editorMode >= 2 ? editorInput : browser;
                 target.requestFocus();
                 getSystemService(InputMethodManager.class).showSoftInput(target, InputMethodManager.SHOW_IMPLICIT);
             });

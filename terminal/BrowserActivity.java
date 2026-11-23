@@ -26,6 +26,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 public final class BrowserActivity extends Activity {
+    static final String EXTRA_URL = "dev.galaxy.terminal.URL";
     private WebView page;
     private FrameLayout content;
     private EditText address;
@@ -96,6 +97,10 @@ public final class BrowserActivity extends Activity {
         }
         createPage();
         if (state != null) page.restoreState(state);
+        else {
+            String url = getIntent().getStringExtra(EXTRA_URL);
+            if (WebAddress.allowed(url)) page.loadUrl(url);
+        }
         content.requestFocus();
         updateControls();
     }

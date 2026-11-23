@@ -4,7 +4,7 @@ const cache = path.resolve(__dirname, '../.build-cache');
 const { chromium } = require(path.join(cache, 'vscode/node_modules/playwright'));
 
 async function main() {
-    const browser = await chromium.launch({ channel: 'msedge' });
+    const browser = await chromium.launch({ channel: process.env.TERMINAL_TEST_BROWSER || 'msedge' });
     try {
         const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
         const errors = [];
@@ -14,16 +14,20 @@ async function main() {
             const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript' };
             const contentType = types[path.extname(name)];
             if (!contentType || !/^[\w.-]+$/.test(name)) return route.fulfill({ status: 404 });
-            return route.fulfill({ path: path.join(cache, 'terminal/assets', name), contentType });
+            const scripts = { 'xterm.js': 'xterm/lib/xterm.js', 'xterm.css': 'xterm/css/xterm.css',
+                'addon-fit.js': 'addon-fit/lib/addon-fit.js', 'addon-web-links.js': 'addon-web-links/lib/addon-web-links.js' };
+            const file = scripts[name] ? path.join(__dirname, 'node_modules/@xterm', scripts[name]) : path.join(__dirname, 'ui', name);
+            return route.fulfill({ path: file, contentType });
         });
         await page.addInitScript(() => {
-            const calls = window.calls = { starts: 0, sizes: [], input: [], copied: [], keyboard: 0, acks: 0, ubuntu: 0, back: 0, browser: 0 };
+            const calls = window.calls = { starts: 0, sizes: [], input: [], copied: [], keyboard: 0, acks: 0, ubuntu: 0, back: 0, browser: 0, links: [] };
             window.Android = {
                 isUbuntuSession() { return window.name === 'ubuntu'; },
                 supportsUbuntu() { return true; },
                 openUbuntu() { calls.ubuntu++; },
                 closeUbuntu() { calls.back++; },
                 openBrowser() { calls.browser++; },
+                openLink(url) { calls.links.push(url); },
                 start(cols, rows) {
                     calls.starts++;
                     calls.sizes.push([cols, rows]);
@@ -73,6 +77,35 @@ async function main() {
 
         const cdp = await page.context().newCDPSession(page);
         const compose = text => cdp.send('Input.imeSetComposition', { text, selectionStart: text.length, selectionEnd: text.length });
+        async function rapidLanguageSwitches() {
+            await page.evaluate(async () => {
+                calls.input.length = 0;
+                term.textarea.value = '';
+                for (let i = 0; i < 8; i++) {
+                    const input = term.textarea;
+                    const prefix = input.value;
+                    input.setSelectionRange(prefix.length, prefix.length);
+                    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Process', keyCode: 229, bubbles: true }));
+                    input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+                    for (const text of ['ㅎ', '하', '한']) {
+                        input.dispatchEvent(new CompositionEvent('compositionupdate', { data: text, bubbles: true }));
+                        input.value = prefix + text;
+                        input.setSelectionRange(input.value.length, input.value.length);
+                        input.dispatchEvent(new InputEvent('input', { data: text, inputType: 'insertCompositionText', isComposing: true, bubbles: true }));
+                    }
+                    input.dispatchEvent(new CompositionEvent('compositionend', { data: '한', bubbles: true }));
+                    await new Promise(done => setTimeout(done, 10));
+                    // Samsung can notify the committed edit again after another Process key.
+                    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Process', keyCode: 229, bubbles: true }));
+                    input.dispatchEvent(new InputEvent('input', { data: '한', inputType: 'insertText', bubbles: true }));
+                    await new Promise(done => setTimeout(done, 10));
+                }
+            });
+            assert.equal(await page.evaluate(() => calls.input.join('')), '한'.repeat(8), 'Delayed IME commit notifications must not duplicate text');
+            await page.keyboard.type('aa');
+            assert.equal(await page.evaluate(() => calls.input.join('')), '한'.repeat(8) + 'aa', 'Intentional repeated letters must be preserved');
+            await page.evaluate(() => { calls.input.length = 0; term.textarea.value = ''; });
+        }
         await page.evaluate(() => new Promise(done => term.write('\x1b]133;B\x07', done)));
         await page.evaluate(async () => {
             const input = term.textarea;
@@ -127,7 +160,18 @@ async function main() {
         await page.getByRole('button', { name: '위 화살표' }).click();
         assert.deepEqual(await page.evaluate(() => calls.input.slice(-4)), ['\x7f', '\x03', '\t', '\x1b[A']);
 
+        await page.evaluate(() => {
+            calls.input.length = 0;
+            for (let i = 0; i < 8; i++) {
+                nativeEditorEdit('', '한');
+                nativeEditorEdit('한', '한');
+                nativeEditorEdit('', 'aa');
+            }
+        });
+        assert.equal(await page.evaluate(() => calls.input.join('')), '한aa'.repeat(8), 'Native Codex commits must preserve repeated letters without replaying unchanged text');
+
         await page.evaluate(() => new Promise(done => term.write('\x1b[?1049h', done)));
+        await rapidLanguageSwitches();
         await page.evaluate(() => { calls.input.length = 0; term.textarea.value = ''; });
         await page.evaluate(() => term.textarea.dispatchEvent(new KeyboardEvent('keydown', {
             key: 'Process', keyCode: 229, bubbles: true
@@ -211,6 +255,25 @@ async function main() {
         await page.keyboard.press('Control+Shift+V');
         assert.equal(await page.evaluate(() => calls.input.at(-1)), '붙여넣기');
 
+        const longURL = 'https://example.com/login?state=' + 'x'.repeat(220);
+        await page.evaluate(url => new Promise(done => term.write('\x1b[2J\x1b[H' + url, done)), longURL);
+        async function clickLink(column, row) {
+            await page.mouse.move(screen.x + (column + 0.5) * cellWidth, screen.y + (row + 0.5) * cellHeight);
+            await page.waitForFunction(() => host.querySelector('.xterm-cursor-pointer'), { }, { timeout: 5000 });
+            await page.mouse.down();
+            await page.mouse.up();
+        }
+        await clickLink(4, 1);
+        assert.equal(await page.evaluate(() => calls.links.at(-1)), longURL, 'Wrapped login URL must open in the internal browser');
+        await page.evaluate(() => new Promise(done => term.write('\x1b[2J\x1b[H\x1b]8;;https://example.com/auth\x07로그인\x1b]8;;\x07', done)));
+        await page.mouse.move(screen.x + screen.width - 5, screen.y + screen.height - 5);
+        await clickLink(1, 0);
+        assert.deepEqual(await page.evaluate(() => calls.links), [longURL, 'https://example.com/auth'], 'OSC 8 links must use the same internal browser');
+        await page.evaluate(() => new Promise(done => term.write('\x1b[2J\x1b[Hhttp://localhost:8080/test', done)));
+        await page.mouse.move(screen.x + screen.width - 5, screen.y + screen.height - 5);
+        await clickLink(5, 0);
+        assert.equal(await page.evaluate(() => calls.links.at(-1)), 'http://localhost:8080/test');
+
         const lines = Array.from({ length: 100 }, (_, i) => `\r\n줄 ${i}`).join('');
         await page.evaluate(data => receiveOutput(data), Buffer.from(lines).toString('base64'));
         await page.waitForFunction(() => calls.acks === 3 && term.buffer.active.baseY > 0);
@@ -247,7 +310,7 @@ async function main() {
         await page.getByRole('button', { name: 'Android 셸로 돌아가기' }).click();
         assert.equal(await page.evaluate(() => calls.back), 1);
         assert.deepEqual(errors, []);
-        console.log('Passed terminal input, trackpad controls, resize, restart and Ubuntu install/return UI.');
+        console.log('Passed IME language switching, terminal links, trackpad controls, resize, restart and Ubuntu install/return UI.');
     } finally {
         await browser.close();
     }

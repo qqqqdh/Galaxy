@@ -15,6 +15,11 @@ const control = document.getElementById('control');
 const notification = document.getElementById('notice');
 const cursorKeys = { ArrowUp: 'A', ArrowDown: 'B', ArrowRight: 'C', ArrowLeft: 'D' };
 
+function openTerminalLink(event, url) {
+  event.preventDefault();
+  Android.openLink(url);
+}
+
 const term = new Terminal({
   allowProposedApi: true,
   cursorBlink: true,
@@ -23,6 +28,7 @@ const term = new Terminal({
   lineHeight: 1.15,
   scrollback: 5000,
   screenReaderMode: true,
+  linkHandler: { activate: openTerminalLink },
   theme: {
     background: '#101319', foreground: '#edf1f8', cursor: '#9eddd1',
     selectionBackground: '#374f69', black: '#212631', brightBlack: '#8590a2',
@@ -32,6 +38,7 @@ const term = new Terminal({
 });
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
+term.loadAddon(new WebLinksAddon.WebLinksAddon(openTerminalLink));
 term.open(host);
 term.textarea.setAttribute('aria-label', '터미널 입력');
 term.textarea.setAttribute('autocorrect', 'off');
@@ -47,6 +54,8 @@ draftView.style.fontSize = term.options.fontSize + 'px';
 let running = false;
 let atPrompt = false;
 let liveEditor = false;
+let nativeTerminal = false;
+let nativeDraft = '';
 let inGalaxyIDE = false;
 let liveRange = { text: '' };
 let composing;
@@ -86,12 +95,14 @@ function shellStarted() {
   term.options.disableStdin = false;
   shellStatus.textContent = '실행 중';
   shellStatus.dataset.running = 'true';
+  updateInputMode();
 }
 
 function shellEnded(message) {
   restart.textContent = running ? '새 셸' : '다시 시도';
   progress.hidden = true;
   running = false;
+  updateInputMode();
   atPrompt = false;
   composing = settling = null;
   editorCommit = null;
@@ -121,7 +132,10 @@ term.onKey(({ domEvent }) => {
 new ResizeObserver(() => fit.fit()).observe(host);
 function sendInput(data) {
   const accepted = Android.send(data);
-  if (accepted && !data.startsWith('\x1b[200~') && /[\r\n]/.test(data)) atPrompt = false;
+  if (accepted && !data.startsWith('\x1b[200~') && /[\r\n]/.test(data)) {
+    atPrompt = false;
+    updateInputMode();
+  }
   return accepted;
 }
 
@@ -139,6 +153,7 @@ term.onData(data => {
 term.parser.registerOscHandler(133, message => {
   if (message !== 'B') return false;
   atPrompt = true;
+  updateInputMode();
   return true;
 });
 
@@ -158,28 +173,41 @@ function resetLiveRange() {
   liveRange = { text: '' };
   term.textarea.value = '';
 }
+function updateInputMode() {
+  const mode = !running ? 0 : liveEditor ? 2 : inGalaxyIDE ? 1 : (!atPrompt || inEditorScreen()) ? 3 : 0;
+  if (mode === 3 && !nativeTerminal) term.focus();
+  nativeTerminal = mode === 3;
+  Android.editorMode?.(mode);
+}
 function setEditorTitle(title) {
   inGalaxyIDE = inEditorScreen() && (title === 'Galaxy IDE' || title === 'Galaxy IDE · 편집');
   const enabled = inGalaxyIDE && title === 'Galaxy IDE · 편집';
-  Android.editorMode?.(enabled ? 2 : inGalaxyIDE ? 1 : 0);
-  if (liveEditor === enabled) return;
+  if (liveEditor === enabled) { updateInputMode(); return; }
   composing = settling = editorCommit = null;
   imeInputPending = false;
   draftView.hidden = true;
   liveEditor = enabled;
   resetLiveRange();
+  updateInputMode();
 }
 term.onTitleChange(setEditorTitle);
 term.buffer.onBufferChange(() => setEditorTitle(''));
 
 function nativeEditorEdit(erased, inserted) {
-  if (!liveEditor || erased === inserted) return;
+  if ((!liveEditor && !nativeTerminal) || erased === inserted) return;
   const before = Array.from(erased);
   const after = Array.from(inserted);
   let shared = 0;
   while (shared < before.length && shared < after.length && before[shared] === after[shared]) shared++;
   const text = after.slice(shared).join('').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '').replace(/\n/g, '\r');
   term.input('\x7f'.repeat(before.length - shared) + text);
+}
+
+function nativeTerminalDraft(text) {
+  nativeDraft = nativeTerminal ? text : '';
+  draftView.textContent = nativeDraft;
+  draftView.hidden = !nativeDraft;
+  positionDraft();
 }
 
 function editorEscape() {
@@ -199,7 +227,7 @@ function syncLiveRange() {
 }
 
 function positionDraft() {
-  if (!composing?.preview) return;
+  if (!composing?.preview && !nativeDraft) return;
   const cursor = term.buffer.active;
   draftView.style.left = Math.min(cursor.cursorX, term.cols - 1) * 100 / term.cols + '%';
   draftView.style.top = cursor.cursorY * 100 / term.rows + '%';
@@ -266,10 +294,10 @@ host.addEventListener('compositionend', event => {
     } else {
       replaceDraft(composing, finalText);
     }
-    composing = null;
     // Samsung can follow a commit with an input notification for the same edit.
-    const commit = editorCommit = { text: finalText };
-    setTimeout(() => { if (editorCommit === commit) editorCommit = null; }, 0);
+    editorCommit = { text: finalText, value: term.textarea.value.slice(0, composing.start) + finalText +
+      (composing.tail ? term.textarea.value.slice(-composing.tail) : '') };
+    composing = null;
     return;
   }
   const composition = settling = composing;
@@ -288,8 +316,9 @@ host.addEventListener('input', event => {
     event.stopPropagation();
     return;
   }
-  if (editorCommit && event.data === editorCommit.text && event.inputType === 'insertText') {
-    editorCommit = null;
+  if (editorCommit && event.data === editorCommit.text && term.textarea.value === editorCommit.value &&
+      (event.inputType === 'insertText' || event.inputType === 'insertCompositionText')) {
+    imeInputPending = false;
     event.stopPropagation();
     return;
   }
@@ -312,7 +341,7 @@ host.addEventListener('keydown', event => {
     return;
   }
   const processKey = event.keyCode === 229;
-  editorCommit = null;
+  if (!processKey && event.key !== 'HangulMode' && !['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(event.key)) editorCommit = null;
   if (liveEditor && !composing && !processKey && (event.ctrlKey || event.metaKey || event.altKey ||
       /^(Arrow|Page|F\d+$)/.test(event.key) || ['Home', 'End', 'Enter', 'Tab', 'Escape', 'Backspace', 'Delete'].includes(event.key))) {
     resetLiveRange();
@@ -335,13 +364,14 @@ host.addEventListener('keypress', event => {
   if (event.target === term.textarea && (composing || editorPrintable(event))) event.stopPropagation();
 }, true);
 host.addEventListener('pointerdown', () => {
+  if (nativeTerminal) Android.resetEditorContext?.();
   if (liveEditor && !composing) {
     resetLiveRange();
     Android.resetEditorContext?.();
   }
 }, true);
 host.addEventListener('pointerup', () => {
-  if (liveEditor) Android.editorMode?.(2);
+  updateInputMode();
 });
 
 function closeMenu() {
@@ -430,7 +460,7 @@ document.getElementById('keys').addEventListener('click', event => {
   if (key) {
     if (key === 'Escape' && inGalaxyIDE) return editorEscape();
     if (composing) return;
-    if (liveEditor) Android.resetEditorContext?.();
+    if (liveEditor || nativeTerminal) Android.resetEditorContext?.();
     finishComposition(true);
     if (key === 'Escape') term.input('\x1b');
     else if (key === 'Tab') term.input('\t');

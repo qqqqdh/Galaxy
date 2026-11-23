@@ -12,7 +12,8 @@ $proot = "$cache/ubuntu-build"
 Push-Location $root
 try {
     if (!(Test-Path "$llvm/clang.exe")) { throw 'Install Android NDK 28.2.13676358 using SDK Manager.' }
-    if (!(Test-Path "$xterm/xterm/lib/xterm.js") -or !(Test-Path "$xterm/addon-fit/lib/addon-fit.js")) {
+    if (!(Test-Path "$xterm/xterm/lib/xterm.js") -or !(Test-Path "$xterm/addon-fit/lib/addon-fit.js") -or
+            !(Test-Path "$xterm/addon-web-links/lib/addon-web-links.js")) {
         throw 'Run npm ci --ignore-scripts inside terminal first.'
     }
     & "$PSScriptRoot/fetch-proot.ps1"
@@ -26,9 +27,10 @@ try {
         Set-Content -LiteralPath "$cache/assets/$profile" -Value $content -Encoding utf8NoBOM -NoNewline
     }
     Copy-Item "$proot/PRoot-COPYING.txt","$proot/PRoot-source.tar.gz","$proot/GPL-3.txt","$proot/talloc-LGPL.txt",'terminal/PRoot-NOTICE.txt' "$cache/assets"
-    Copy-Item "$xterm/xterm/lib/xterm.js","$xterm/xterm/css/xterm.css","$xterm/addon-fit/lib/addon-fit.js" "$cache/assets"
+    Copy-Item "$xterm/xterm/lib/xterm.js","$xterm/xterm/css/xterm.css","$xterm/addon-fit/lib/addon-fit.js","$xterm/addon-web-links/lib/addon-web-links.js" "$cache/assets"
     Copy-Item "$xterm/xterm/LICENSE" "$cache/assets/xterm-LICENSE.txt"
     Copy-Item "$xterm/addon-fit/LICENSE" "$cache/assets/addon-fit-LICENSE.txt"
+    Copy-Item "$xterm/addon-web-links/LICENSE" "$cache/assets/addon-web-links-LICENSE.txt"
 
     javac -encoding UTF-8 --release 8 -classpath $platform -d "$cache/classes" terminal/TerminalActivity.java terminal/EditorInput.java terminal/PtySession.java terminal/Ubuntu.java terminal/UbuntuSetup.java terminal/BrowserActivity.java terminal/WebAddress.java
     & "$jdk/bin/jar.exe" cf "$cache/classes.jar" -C "$cache/classes" .
@@ -49,7 +51,7 @@ try {
         '-Wl,-z,max-page-size=16384' terminal/ubuntu-session.c -o "$cache/lib/arm64-v8a/libgalaxy_session.so"
     & "$tools/aapt2.exe" compile --dir terminal/res -o "$cache/browser-res.zip"
     & "$tools/aapt2.exe" link -I $platform --manifest terminal/AndroidManifest.xml -A "$cache/assets" `
-        "$cache/browser-res.zip" -o "$cache/base.apk" --version-code 15 --version-name 0.4.9
+        "$cache/browser-res.zip" -o "$cache/base.apk" --version-code 16 --version-name 0.4.10
     Copy-Item -Force "$cache/base.apk" "$cache/packed.apk"
     $archive = [IO.Compression.ZipFile]::Open([IO.Path]::GetFullPath("$cache/packed.apk", $root), 'Update')
     try {
