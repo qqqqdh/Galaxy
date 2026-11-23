@@ -4,7 +4,7 @@
 
 ## 설치와 사용
 
-1. [Galaxy Terminal 0.4.11 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.11)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
+1. [Galaxy Terminal 0.4.12 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.12)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
 2. Galaxy Terminal을 열고 물리 키보드를 사용하거나, 상단 **키보드**를 눌러 한국어가 설정된 Android 키보드를 엽니다.
 3. `echo '한글 입력 확인'`을 입력합니다. `pwd`로 현재 디렉터리, `stty size`로 터미널 크기를 확인할 수 있습니다.
 
@@ -37,6 +37,8 @@ Ubuntu 셸과 Galaxy IDE 하단 터미널은 별도의 TTY로 로그인 목록�
 터미널 상단의 **브라우저**를 눌러 웹 주소나 검색어를 입력합니다. 검색어는 Google 검색으로 열립니다. 일반 사이트는 HTTPS로 열리고, 기기에서 실행 중인 서버는 `http://127.0.0.1:8080` 또는 `localhost:8080`처럼 입력할 수 있습니다. 서버가 다른 포트를 사용한다면 주소의 포트를 바꾸세요. 브라우저에서 **터미널**을 누르면 실행 중이던 셸로 돌아갑니다.
 
 0.4.10부터 터미널 출력의 URL을 클릭하면 해당 주소가 내장 브라우저에서 바로 열립니다. 긴 주소가 여러 줄에 걸쳐 표시된 경우와 OSC 8 링크도 지원합니다. HTTPS와 기기 내부 HTTP 주소에 기존 브라우저의 주소 검증 규칙을 동일하게 적용합니다.
+
+Claude Code의 인증 링크는 Android 브라우저에서 열립니다. Google 계정으로 로그인한 뒤 인증 코드가 표시되면 실행 중인 Claude Code에 붙여넣습니다.
 
 ## 0.4.10 변경
 

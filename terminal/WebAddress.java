@@ -30,6 +30,16 @@ final class WebAddress {
 
     static boolean allowed(String url) { return url != null && allowed(parse(url)); }
 
+    static boolean isClaudeCodeAuthorization(String url) {
+        URI address = url == null ? null : parse(url);
+        if (!allowed(address) || !"https".equalsIgnoreCase(address.getScheme())
+                || (address.getPort() != -1 && address.getPort() != 443)) return false;
+        String host = address.getHost();
+        String path = address.getRawPath();
+        return ("claude.com".equalsIgnoreCase(host) && "/cai/oauth/authorize".equals(path))
+                || ("claude.ai".equalsIgnoreCase(host) && "/oauth/authorize".equals(path));
+    }
+
     private static boolean allowed(URI address) {
         if (address == null || address.getHost() == null || address.getRawUserInfo() != null
                 || address.getPort() == 0 || address.getPort() > 65535) return false;

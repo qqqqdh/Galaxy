@@ -2,10 +2,12 @@ package dev.galaxy.terminal;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
 import android.graphics.Insets;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.system.ErrnoException;
@@ -267,6 +269,16 @@ public class TerminalActivity extends Activity {
                 if (browser == null) return;
                 if (!WebAddress.allowed(url)) {
                     evaluate("notice('HTTPS 주소 또는 기기 내부 HTTP 주소를 열 수 있습니다.')");
+                    return;
+                }
+                if (WebAddress.isClaudeCodeAuthorization(url)) {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                    try {
+                        startActivity(intent);
+                    } catch (ActivityNotFoundException unavailable) {
+                        evaluate("notice('Claude Code 로그인 링크를 열 웹 브라우저를 설치해 주세요.')");
+                    }
                     return;
                 }
                 Intent intent = new Intent(TerminalActivity.this, BrowserActivity.class);

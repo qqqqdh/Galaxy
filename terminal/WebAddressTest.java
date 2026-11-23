@@ -21,10 +21,21 @@ public final class WebAddressTest {
                 || WebAddress.allowed("http://example.com") || WebAddress.allowed("content://example.com")) {
             throw new AssertionError("Unexpected navigation policy");
         }
+        expectClaudeAuthorization("https://claude.com/cai/oauth/authorize?state=test", true);
+        expectClaudeAuthorization("https://claude.ai/oauth/authorize?state=test", true);
+        expectClaudeAuthorization("https://claude.com/", false);
+        expectClaudeAuthorization("https://auth.openai.com/oauth/authorize", false);
+        expectClaudeAuthorization("https://claude.com.example.org/cai/oauth/authorize", false);
+        expectClaudeAuthorization("https://claude.com:8443/cai/oauth/authorize", false);
+        expectClaudeAuthorization("https://user@claude.com/cai/oauth/authorize", false);
         System.out.println("Browser address and navigation policy passed.");
     }
 
     private static void expect(String input, String expected) {
         if (!Objects.equals(expected, WebAddress.fromInput(input))) throw new AssertionError(input);
+    }
+
+    private static void expectClaudeAuthorization(String url, boolean expected) {
+        if (WebAddress.isClaudeCodeAuthorization(url) != expected) throw new AssertionError(url);
     }
 }
