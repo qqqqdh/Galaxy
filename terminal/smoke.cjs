@@ -224,6 +224,14 @@ async function main() {
             else edited.push(ch);
         }
         assert.equal(edited.join(''), Array(3).fill('한abc글 ').join('\r'));
+        await page.evaluate(() => new Promise(done => term.write('\x1b[6;2H\x1b]2;Galaxy IDE · 터미널 12,3\x07', done)));
+        await page.evaluate(() => nativeTerminalDraft('한'));
+        assert(await page.evaluate(() => Math.abs(parseFloat(draftView.style.left) - 12 * 100 / term.cols) < 0.001 &&
+            Math.abs(parseFloat(draftView.style.top) - 3 * 100 / term.rows) < 0.001));
+        await page.evaluate(() => new Promise(done => term.write('\x1b]2;Galaxy IDE · 터미널\x07', done)));
+        assert(await page.evaluate(() => Math.abs(parseFloat(draftView.style.left) - 100 / term.cols) < 0.001 &&
+            Math.abs(parseFloat(draftView.style.top) - 5 * 100 / term.rows) < 0.001));
+        await page.evaluate(() => nativeTerminalDraft(''));
         await page.evaluate(() => new Promise(done => term.write('\x1b]2;Galaxy IDE\x07', done)));
         await page.keyboard.press('Escape');
         assert.equal(await page.evaluate(() => calls.input.at(-1)), '\x1b');

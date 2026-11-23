@@ -4,8 +4,8 @@
 
 | 프로그램 | 다운로드 | 소스와 사용법 | 버전별 기록 |
 | --- | --- | --- | --- |
-| Galaxy Terminal (Android) | [0.4.12 APK](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.12) | [터미널 사용법과 빌드](terminal/) | [터미널 배포 기록](versions/terminal/) |
-| Galaxy IDE (Ubuntu ARM64) | [0.1.17 실행 파일](https://github.com/qqqqdh/Galaxy/releases/tag/ide-v0.1.17) | [IDE 사용법과 빌드](cli-ide/) | [IDE 변경 이력](cli-ide/CHANGELOG.md) |
+| Galaxy Terminal (Android) | [0.4.13 APK](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.13) | [터미널 사용법과 빌드](terminal/) | [터미널 배포 기록](versions/terminal/) |
+| Galaxy IDE (Ubuntu ARM64) | [0.1.18 실행 파일](https://github.com/qqqqdh/Galaxy/releases/tag/ide-v0.1.18) | [IDE 사용법과 빌드](cli-ide/) | [IDE 변경 이력](cli-ide/CHANGELOG.md) |
 
 ## Galaxy Terminal 설치
 

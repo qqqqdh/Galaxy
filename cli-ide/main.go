@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-const version = "0.1.17"
+const version = "0.1.18"
 
 func main() {
 	showVersion := flag.Bool("version", false, "버전 표시")

@@ -174,9 +174,25 @@ func newIDE(root string, config config) *ide {
 		AddItem(fullBar, 1, 0, false).AddItem(i.shell, 0, 1, true), true, false)
 	i.app.SetRoot(i.pages, true).EnableMouse(true).EnablePaste(true)
 	i.app.SetInputCapture(i.handleKey)
-	i.app.SetAfterDrawFunc(i.drawHints)
 	i.app.SetMouseCapture(i.hintMouse)
 	var editorTitle string
+	i.app.SetAfterDrawFunc(func(screen tcell.Screen) {
+		i.drawHints(screen)
+		title := "Galaxy IDE"
+		if i.shell.HasFocus() || i.assistant.HasFocus() {
+			title = "Galaxy IDE · 터미널"
+			if p := i.assistant.draftAt; i.assistant.HasFocus() && p != nil {
+				title += fmt.Sprintf(" %d,%d", p.X, p.Y)
+			}
+		} else if (i.pickerField != nil && i.pickerField.HasFocus()) || i.searchField.HasFocus() ||
+			(!i.dialog && i.active != nil && i.active.editor.HasFocus() && !i.active.editor.HasSelection()) {
+			title = "Galaxy IDE · 편집"
+		}
+		if title != editorTitle {
+			screen.SetTitle(title)
+			editorTitle = title
+		}
+	})
 	var assistantShown bool
 	var assistantFocused bool
 	i.app.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
@@ -185,17 +201,6 @@ func newIDE(root string, config config) *ide {
 			if !i.active.editor.HasFocus() || a != i.hintOffset || b != a {
 				i.clearHints()
 			}
-		}
-		title := "Galaxy IDE"
-		if i.shell.HasFocus() || i.assistant.HasFocus() {
-			title = "Galaxy IDE · 터미널"
-		} else if (i.pickerField != nil && i.pickerField.HasFocus()) || i.searchField.HasFocus() ||
-			(!i.dialog && i.active != nil && i.active.editor.HasFocus() && !i.active.editor.HasSelection()) {
-			title = "Galaxy IDE · 편집"
-		}
-		if title != editorTitle {
-			screen.SetTitle(title)
-			editorTitle = title
 		}
 		width, height := screen.Size()
 		focused := i.assistant.HasFocus()

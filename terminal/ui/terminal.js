@@ -56,6 +56,7 @@ let atPrompt = false;
 let liveEditor = false;
 let nativeTerminal = false;
 let nativeDraft = '';
+let draftAnchor;
 let inGalaxyIDE = false;
 let liveRange = { text: '' };
 let composing;
@@ -180,9 +181,11 @@ function updateInputMode() {
   Android.editorMode?.(mode);
 }
 function setEditorTitle(title) {
+  const anchor = inEditorScreen() && /^Galaxy IDE · 터미널 (\d+),(\d+)$/.exec(title);
+  draftAnchor = anchor ? { x: Number(anchor[1]), y: Number(anchor[2]) } : null;
   inGalaxyIDE = inEditorScreen() && (title === 'Galaxy IDE' || title === 'Galaxy IDE · 편집');
   const enabled = inGalaxyIDE && title === 'Galaxy IDE · 편집';
-  if (liveEditor === enabled) { updateInputMode(); return; }
+  if (liveEditor === enabled) { updateInputMode(); positionDraft(); return; }
   composing = settling = editorCommit = null;
   imeInputPending = false;
   draftView.hidden = true;
@@ -229,8 +232,8 @@ function syncLiveRange() {
 function positionDraft() {
   if (!composing?.preview && !nativeDraft) return;
   const cursor = term.buffer.active;
-  draftView.style.left = Math.min(cursor.cursorX, term.cols - 1) * 100 / term.cols + '%';
-  draftView.style.top = cursor.cursorY * 100 / term.rows + '%';
+  draftView.style.left = Math.min(draftAnchor?.x ?? cursor.cursorX, term.cols - 1) * 100 / term.cols + '%';
+  draftView.style.top = Math.min(draftAnchor?.y ?? cursor.cursorY, term.rows - 1) * 100 / term.rows + '%';
   draftView.style.height = 100 / term.rows + '%';
 }
 term.onRender(positionDraft);
