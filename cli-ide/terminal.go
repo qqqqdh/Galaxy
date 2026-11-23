@@ -21,6 +21,7 @@ type shellPane struct {
 	file    *os.File
 	message string
 	scroll  int
+	claude  bool
 }
 
 func (s *shellPane) start(dir string) {
@@ -45,6 +46,7 @@ func (s *shellPane) run(dir string, job task, onExit func(error)) {
 	}
 	em := vt.NewEmulator(w, h)
 	s.term, s.file, s.message = em, file, ""
+	s.claude = args[0] == "claude"
 	go func() { _, _ = io.Copy(file, em) }()
 	go func() {
 		buf := make([]byte, 8192)
@@ -88,6 +90,7 @@ func (s *shellPane) close() {
 		s.term = nil
 	}
 	s.scroll = 0
+	s.claude = false
 }
 
 func termColor(c color.Color, fallback tcell.Color) tcell.Color {
@@ -120,14 +123,20 @@ func (s *shellPane) Draw(screen tcell.Screen) {
 		history = 0
 	}
 	s.scroll = min(history, s.scroll)
+	cellAt := func(col, row int) *uv.Cell {
+		offset := row - s.scroll
+		if offset < 0 {
+			return em.ScrollbackCellAt(col, history+offset)
+		}
+		return em.CellAt(col, offset)
+	}
+	var link terminalLink
+	if s.claude {
+		link = findClaudeAuthorization(w, h, cellAt)
+	}
 	for row := 0; row < h; row++ {
 		for col := 0; col < w; col++ {
-			var cell *uv.Cell
-			if offset := row - s.scroll; offset < 0 {
-				cell = em.ScrollbackCellAt(col, history+offset)
-			} else {
-				cell = em.CellAt(col, offset)
-			}
+			cell := cellAt(col, row)
 			if cell == nil || cell.Width == 0 {
 				continue
 			}
@@ -137,6 +146,9 @@ func (s *shellPane) Draw(screen tcell.Screen) {
 			}
 			a := cell.Style
 			style := tcell.StyleDefault.Foreground(termColor(a.Fg, foreground)).Background(termColor(a.Bg, background)).Bold(a.Attrs&uv.AttrBold != 0).Reverse(a.Attrs&uv.AttrReverse != 0).Underline(a.Underline != 0)
+			if link.contains(col, row) {
+				style = style.Url(link.url).UrlId("claude-authorization")
+			}
 			screen.SetContent(x+col, y+row, r[0], r[1:], style)
 		}
 	}
