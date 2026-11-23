@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/gdamore/tcell/v2"
 )
 
-const version = "0.1.19"
+const version = "0.1.20"
 
 func main() {
 	showVersion := flag.Bool("version", false, "버전 표시")
@@ -77,6 +79,17 @@ func main() {
 	if recoveryErr != nil {
 		ide.notify("자동 복구 확인 필요 · " + recoveryErr.Error())
 	}
+	screen, err := tcell.NewScreen()
+	if err != nil {
+		fail(err)
+	}
+	ide.inputScreen = &inputScreen{Screen: screen}
+	ide.app.SetScreen(ide.inputScreen)
+	if ide.inputScreen.initErr != nil {
+		fail(ide.inputScreen.initErr)
+	}
+	screen.EnableMouse()
+	screen.EnablePaste()
 	if err := ide.app.Run(); err != nil {
 		fail(err)
 	}

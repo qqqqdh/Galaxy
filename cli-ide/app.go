@@ -71,6 +71,7 @@ type ide struct {
 	problemList                *tview.List
 	problemButton              *tview.Button
 	app                        *tview.Application
+	inputScreen                *inputScreen
 	root                       string
 	config                     config
 	pages                      *tview.Pages
@@ -195,6 +196,9 @@ func newIDE(root string, config config) *ide {
 	var assistantShown bool
 	var assistantFocused bool
 	i.app.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
+		if i.inputScreen != nil && i.inputScreen.skipFrame {
+			return true
+		}
 		if i.acceptHint != nil && i.active != nil {
 			_, a, b := i.active.editor.GetSelection()
 			if !i.active.editor.HasFocus() || a != i.hintOffset || b != a {
@@ -433,6 +437,14 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 	if i.shell.HasFocus() || i.assistant.HasFocus() {
+		if i.inputScreen != nil && i.assistant.HasFocus() && i.assistant.claude &&
+			i.assistant.file != nil && i.assistant.scroll == 0 && event.Modifiers() == tcell.ModNone {
+			switch event.Key() {
+			case tcell.KeyRune, tcell.KeyBackspace, tcell.KeyBackspace2:
+				// The Claude PTY paints the changed prompt when it echoes the edit.
+				i.inputScreen.skipFrame = true
+			}
+		}
 		if event.Key() == tcell.KeyCtrlC {
 			return tcell.NewEventKey(tcell.KeyCtrlC, 0, tcell.ModNone)
 		}
