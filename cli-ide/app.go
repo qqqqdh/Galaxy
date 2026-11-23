@@ -49,8 +49,6 @@ type ide struct {
 	stopLanguages, cancelHint  context.CancelFunc
 	hintTimer                  *time.Timer
 	hints                      *tview.List
-	priorDock                  string
-	priorDockOpen              bool
 	hintOffset                 int
 	acceptHint                 func(int)
 	changeList                 *tview.List
@@ -60,6 +58,7 @@ type ide struct {
 	searchCancel, pickerCancel context.CancelFunc
 	draftDir                   string
 	live, dockOpen             bool
+	fullTerminal               bool
 	timer                      *time.Timer
 	cancel                     context.CancelFunc
 	dock                       *tview.Pages
@@ -144,7 +143,7 @@ func newIDE(root string, config config) *ide {
 	for _, item := range []struct {
 		label string
 		run   func()
-	}{{"파일", i.fileMenu}, {"실행", i.taskMenu}, {"도움말", i.help}} {
+	}{{"파일", i.fileMenu}, {"실행", i.taskMenu}, {"AI", i.assistantMenu}, {"도움말", i.help}} {
 		button := tview.NewButton(item.label).SetSelectedFunc(item.run)
 		button.SetStyle(tcell.StyleDefault.Background(panel).Foreground(foreground))
 		header.AddItem(button, 10, 0, false)
@@ -160,18 +159,26 @@ func newIDE(root string, config config) *ide {
 		AddItem(header, 1, 0, false).AddItem(i.body, 0, 1, true).
 		AddItem(bar, 1, 0, false).AddItem(i.dock, 6, 0, false).AddItem(i.status, 1, 0, false).AddItem(footer, 1, 0, false)
 	i.pages.AddPage("main", layout, true, true)
+	fullBar := tview.NewFlex().AddItem(tview.NewButton("편집기로").SetSelectedFunc(i.toggleFullTerminal), 12, 0, false).
+		AddItem(tview.NewTextView().SetText(" 프로젝트 터미널 · Ctrl+T 돌아가기"), 0, 1, false)
+	i.pages.AddPage("terminal-full", tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(fullBar, 1, 0, false).AddItem(i.shell, 0, 1, true), true, false)
 	i.app.SetRoot(i.pages, true).EnableMouse(true).EnablePaste(true)
 	i.app.SetInputCapture(i.handleKey)
+	i.app.SetAfterDrawFunc(i.drawHints)
+	i.app.SetMouseCapture(i.hintMouse)
 	var editorTitle string
 	i.app.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
 		if i.acceptHint != nil && i.active != nil {
 			_, a, b := i.active.editor.GetSelection()
-			if a != i.hintOffset || b != a {
+			if !i.active.editor.HasFocus() || a != i.hintOffset || b != a {
 				i.clearHints()
 			}
 		}
 		title := "Galaxy IDE"
-		if (i.pickerField != nil && i.pickerField.HasFocus()) || i.searchField.HasFocus() ||
+		if i.shell.HasFocus() {
+			title = "Galaxy IDE · 터미널"
+		} else if (i.pickerField != nil && i.pickerField.HasFocus()) || i.searchField.HasFocus() ||
 			(!i.dialog && i.active != nil && i.active.editor.HasFocus() && !i.active.editor.HasSelection()) {
 			title = "Galaxy IDE · 편집"
 		}
@@ -349,6 +356,10 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return event
 	}
+	if event.Key() == tcell.KeyF8 || i.fullTerminal && event.Key() == tcell.KeyCtrlT {
+		i.toggleFullTerminal()
+		return nil
+	}
 	if event.Key() == tcell.KeyCtrlT {
 		if i.shell.HasFocus() {
 			i.app.SetFocus(i.active.editor)
@@ -378,7 +389,10 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 				i.acceptHint(i.hints.GetCurrentItem())
 				return nil
 			case tcell.KeyDown:
-				i.app.SetFocus(i.hints)
+				i.hints.SetCurrentItem(min(i.hints.GetItemCount()-1, i.hints.GetCurrentItem()+1))
+				return nil
+			case tcell.KeyUp:
+				i.hints.SetCurrentItem(max(0, i.hints.GetCurrentItem()-1))
 				return nil
 			case tcell.KeyEscape:
 				i.clearHints()
@@ -386,11 +400,6 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 			}
 			i.clearHints()
 		}
-	}
-	if i.hints.HasFocus() && event.Key() == tcell.KeyEscape {
-		i.clearHints()
-		i.app.SetFocus(i.active.editor)
-		return nil
 	}
 	if event.Key() == tcell.KeyCtrlJ {
 		i.openDock("문제")

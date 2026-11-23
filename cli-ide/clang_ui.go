@@ -10,6 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -22,11 +23,54 @@ func (i *ide) clearHints() {
 		i.cancelHint()
 		i.cancelHint = nil
 	}
-	if i.acceptHint != nil {
-		i.acceptHint = nil
-		i.dock.SwitchToPage(i.priorDock)
-		i.dockOpen = i.priorDockOpen
+	i.acceptHint = nil
+	i.hints.SetRect(0, 0, 0, 0)
+}
+
+func (i *ide) drawHints(screen tcell.Screen) {
+	i.hints.SetRect(0, 0, 0, 0)
+	if i.acceptHint == nil || i.dialog || !i.active.editor.HasFocus() {
+		return
 	}
+	editor := i.active.editor
+	x, y, width, height := editor.GetInnerRect()
+	_, _, row, column := editor.GetCursor()
+	firstRow, firstColumn := editor.GetOffset()
+	row, column = row-firstRow, column-firstColumn
+	if row < 0 || row >= height || column < 0 || column >= width {
+		return
+	}
+	popupWidth := min(width, 56)
+	popupHeight := min(i.hints.GetItemCount()+2, 9)
+	start := row + 1
+	if below := height - start; below < popupHeight {
+		if row > below {
+			popupHeight = min(popupHeight, row)
+			start = row - popupHeight
+		} else {
+			popupHeight = below
+		}
+	}
+	if popupHeight < 3 || popupWidth < 8 {
+		return
+	}
+	i.hints.SetRect(x+min(column, width-popupWidth), y+start, popupWidth, popupHeight)
+	i.hints.Draw(screen)
+}
+
+func (i *ide) hintMouse(event *tcell.EventMouse, action tview.MouseAction) (*tcell.EventMouse, tview.MouseAction) {
+	if i.acceptHint == nil || !i.hints.InRect(event.Position()) || action == tview.MouseMove {
+		return event, action
+	}
+	switch action {
+	case tview.MouseLeftClick:
+		i.hints.MouseHandler()(action, event, func(tview.Primitive) {})
+	case tview.MouseScrollUp:
+		i.hints.SetCurrentItem(max(0, i.hints.GetCurrentItem()-1))
+	case tview.MouseScrollDown:
+		i.hints.SetCurrentItem(min(i.hints.GetItemCount()-1, i.hints.GetCurrentItem()+1))
+	}
+	return nil, action
 }
 func identStart(text string, at int) int {
 	for at > 0 {
@@ -45,11 +89,11 @@ func (i *ide) scheduleCompletion(d *openDocument) {
 	}
 	ctx, cancel := context.WithCancel(i.languageLife)
 	i.cancelHint = cancel
-	i.hintTimer = time.AfterFunc(350*time.Millisecond, func() {
+	i.hintTimer = time.AfterFunc(175*time.Millisecond, func() {
 		if ctx.Err() != nil {
 			return
 		}
-		i.app.QueueUpdateDraw(func() {
+		i.app.QueueUpdate(func() {
 			if ctx.Err() == nil && i.active == d && !i.dialog && d.editor.HasFocus() {
 				i.askLanguageServer("completion", true)
 			}
@@ -124,8 +168,6 @@ func (i *ide) askLanguageServer(method string, auto bool) {
 				return
 			}
 			i.hints.Clear()
-			i.priorDock, _ = i.dock.GetFrontPage()
-			i.priorDockOpen = i.dockOpen
 			i.hintOffset = at
 			i.acceptHint = func(index int) {
 				if index < 0 || index >= len(result.Items) {
@@ -162,13 +204,17 @@ func (i *ide) askLanguageServer(method string, auto bool) {
 				} else if value == "" {
 					value = strings.TrimSpace(item.Label)
 				}
-				if item.InsertTextFormat==2 {
-     expanded,a,b,ok:=webSnippet(value)
-     if ok {
-      d.editor.Replace(start,finish,expanded)
-      d.editor.Select(start+a,start+b)
-     }else{d.editor.Replace(start,finish,strings.TrimSpace(item.Label))}
-    }else{d.editor.Replace(start,finish,value)}
+				if item.InsertTextFormat == 2 {
+					expanded, a, b, ok := webSnippet(value)
+					if ok {
+						d.editor.Replace(start, finish, expanded)
+						d.editor.Select(start+a, start+b)
+					} else {
+						d.editor.Replace(start, finish, strings.TrimSpace(item.Label))
+					}
+				} else {
+					d.editor.Replace(start, finish, value)
+				}
 				i.clearHints()
 			}
 			for n, item := range result.Items {
@@ -178,10 +224,10 @@ func (i *ide) askLanguageServer(method string, auto bool) {
 					}
 				})
 			}
-			i.dockOpen = true
-			i.dock.SwitchToPage("자동완성")
-			i.app.SetFocus(d.editor)
-			i.notify(fmt.Sprintf("%s 자동완성 %d개 · Tab 적용 · ↓ 목록 · Esc 닫기", tools.server, len(result.Items)))
+			i.hints.SetCurrentItem(0)
+			if !auto {
+				i.message = ""
+			}
 		})
 	}()
 }

@@ -130,6 +130,49 @@ func TestSyntaxInEditor(t *testing.T) {
 	}
 }
 
+func TestCompletionPopupFollowsCursor(t *testing.T) {
+	i := newIDE(t.TempDir(), config{IndentSize: 4})
+	i.newFile()
+	d := i.active
+	d.disk.path = "main.go"
+	source := "\t한글.pr\n\n\n\n\t한글.pr"
+	d.editor.SetText(source, false)
+	d.editor.SetRect(10, 4, 70, 7)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(90, 20)
+
+	selected := -1
+	i.acceptHint = func(index int) { selected = index }
+	i.hints.AddItem("Print", "", 0, nil).AddItem("Printf", "", 0, nil)
+	for _, where := range []struct {
+		offset int
+		above  bool
+	}{{strings.IndexByte(source, '\n'), false}, {len(source), true}} {
+		d.editor.Select(where.offset, where.offset)
+		d.editor.Draw(screen)
+		i.drawHints(screen)
+		x, y, _, h := i.hints.GetRect()
+		_, _, row, col := d.editor.GetCursor()
+		rowOffset, colOffset := d.editor.GetOffset()
+		cursorY := 5 + row - rowOffset
+		if x != 11+col-colOffset || h != 4 || (!where.above && y != cursorY+1) || (where.above && y+h != cursorY) {
+			t.Fatalf("popup is not adjacent to the visible cursor: rect origin (%d, %d), height %d, cursor row %d", x, y, h, cursorY)
+		}
+	}
+	i.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	i.handleKey(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone))
+	if selected != 1 || !d.editor.HasFocus() {
+		t.Fatal("selection should apply the second result while editor retains focus")
+	}
+	if page, _ := i.dock.GetFrontPage(); page != "문제" {
+		t.Fatalf("completion replaced dock page %q", page)
+	}
+}
+
 func TestEditorWorkflow(t *testing.T) {
 	root := t.TempDir()
 	i := newIDE(root, config{IndentSize: 4})

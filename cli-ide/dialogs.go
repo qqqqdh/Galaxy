@@ -231,7 +231,7 @@ Ctrl+O          파일 열기 또는 새 경로 입력
 Ctrl+P          파일명 일부로 빠른 열기
 하단 검색       프로젝트 전체 검색 · 결과를 누르거나 Enter로 이동
 하단 변경사항   Git 변경 목록 · 파일을 눌러 비교 · Esc로 목록 복귀
-Ctrl+K          언어 서버 자동완성 · Tab 적용
+Ctrl+K          커서 옆 자동완성 · ↑/↓ 선택 · Tab 적용 · Esc 닫기
 Ctrl+] / F12    커서에 있는 함수의 정의로 이동
 Ctrl+N          새 파일
 Ctrl+S          저장
@@ -257,9 +257,11 @@ Android 클립보드는 터미널의 붙여넣기 메뉴 또는 Ctrl+Shift+V를 
 [#8edbc6]실행과 확장[-]
 Ctrl+R          프로젝트 build 작업 · 현재 언어 실행 또는 웹 미리보기
 실행 메뉴       프로젝트 test 작업 선택
-F5              실행 작업과 Codex · Claude Code · AGY
+F5              실행 작업 메뉴
+상단 AI         Codex · Claude Code · AGY 전체 화면 실행
 Ctrl+J          문제 목록 · Enter로 오류 위치 이동
 Ctrl+T          하단 터미널 / 편집기로 전환
+F8              기존 프로젝트 터미널 전체 화면 확대 / 복귀
 F7              전체 화면 프로젝트 셸
 .galaxy-ide.json의 tasks에 명령을 추가하면 F5에 표시됩니다.
 {file}은 저장한 파일 경로, {root}는 프로젝트 폴더입니다.

@@ -175,15 +175,29 @@ func (i *ide) makeDock() *tview.Flex {
 	i.changeList = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)
 	i.dock.AddPage("변경사항", i.changeList, true, false)
 	i.hints = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)
-	i.dock.AddPage("자동완성", i.hints, true, false)
+	i.hints.SetBorder(true).SetTitle(" 자동완성 ").SetBackgroundColor(panel)
 	i.problemButton = tview.NewButton("문제 (0)").SetSelectedFunc(func() { i.openDock("문제") })
 	bar := tview.NewFlex().AddItem(i.problemButton, 14, 0, false).
 		AddItem(tview.NewButton("터미널").SetSelectedFunc(func() { i.openDock("터미널") }), 12, 0, false).
+		AddItem(tview.NewButton("터미널 확대").SetSelectedFunc(i.toggleFullTerminal), 14, 0, false).
 		AddItem(tview.NewButton("검색").SetSelectedFunc(func() { i.openDock("검색") }), 9, 0, false).
 		AddItem(tview.NewButton("변경사항").SetSelectedFunc(func() { i.openDock("변경사항") }), 12, 0, false).
 		AddItem(tview.NewButton("접기").SetSelectedFunc(i.hideDock), 9, 0, false)
 	i.dockOpen = true
 	return bar
+}
+
+func (i *ide) toggleFullTerminal() {
+	i.clearHints()
+	i.fullTerminal = !i.fullTerminal
+	if i.fullTerminal {
+		i.pages.SwitchToPage("terminal-full")
+		i.shell.start(i.root)
+		i.app.SetFocus(i.shell)
+		return
+	}
+	i.pages.SwitchToPage("main")
+	i.app.SetFocus(i.active.editor)
 }
 
 func (i *ide) openDock(page string) {

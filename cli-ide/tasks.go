@@ -129,16 +129,29 @@ func (p nativeProject) buildArgs(active string) ([]string, error) {
 	return args, nil
 }
 
+var assistantTasks = []task{
+	{Name: "Codex", Args: []string{"codex", "--no-daemon", "-c", "tui.disable_paste_burst=true"}},
+	{Name: "Claude Code", Args: []string{"claude"}},
+	{Name: "AGY", Args: []string{"agy"}},
+}
+
+func (i *ide) assistantMenu() {
+	list := tview.NewList().ShowSecondaryText(false)
+	list.SetBorder(true).SetTitle(" AI · 전체 화면에서 실행 ")
+	for _, entry := range assistantTasks {
+		list.AddItem(entry.Name, "", 0, func() {
+			i.dismiss()
+			i.runTask(entry)
+		})
+	}
+	i.showDialog(list, 34, 6)
+}
+
 func (i *ide) taskMenu() {
 	list := tview.NewList().ShowSecondaryText(true)
 	list.SetBorder(true).SetTitle(" 실행 작업 · 선택한 명령을 프로젝트 폴더에서 실행 ")
-	tasks := []task{
-		shellTask(),
-		{Name: "Codex", Args: []string{"codex", "--no-daemon"}},
-		{Name: "Claude Code", Args: []string{"claude"}},
-		{Name: "AGY", Args: []string{"agy"}},
-		{Name: "Git 상태", Args: []string{"git", "status", "--short", "--branch"}},
-	}
+	tasks := append([]task{shellTask()}, assistantTasks...)
+	tasks = append(tasks, task{Name: "Git 상태", Args: []string{"git", "status", "--short", "--branch"}})
 	if t, ok := fileTask(i.active.disk.path, i.nativeProject().root); ok {
 		tasks = append([]task{t}, tasks...)
 	}
