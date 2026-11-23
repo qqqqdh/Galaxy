@@ -227,8 +227,11 @@ public class TerminalActivity extends Activity {
                 if (mode >= 2) {
                     editorInput.setVisibility(View.VISIBLE);
                     if (!editorInput.hasFocus()) editorInput.requestFocus();
+                    // A tap in WebView can otherwise transfer the Android IME back to xterm's textarea.
+                    browser.setFocusable(false);
                 } else if (wasEditing) {
                     editorInput.resetContext();
+                    browser.setFocusableInTouchMode(true);
                     editorInput.setVisibility(View.GONE);
                     browser.requestFocus();
                     evaluate("term.focus()");

@@ -15,16 +15,17 @@ env HOME="$scratch/home" PATH="$scratch/bin:$PATH" GALAXY_TEST_PROFILE="$profile
 set -eu
 PS1= PS2=
 . "$GALAXY_TEST_PROFILE"
-[[ $(codex) == "<--no-daemon>" ]]
-[[ $(codex resume --last) == $'<--no-daemon>\n<resume>\n<--last>' ]]
-[[ $(codex fork session-id "two words") == $'<--no-daemon>\n<fork>\n<session-id>\n<two words>' ]]
-[[ $(codex --no-daemon resume --last) == $'<--no-daemon>\n<resume>\n<--last>' ]]
-[[ $(codex -- --no-daemon) == $'<--no-daemon>\n<-->\n<--no-daemon>' ]]
+prefix=$'<-c>\n<tui.disable_paste_burst=true>\n<--no-daemon>'
+[[ $(codex) == "$prefix" ]]
+[[ $(codex resume --last) == "$prefix"$'\n<resume>\n<--last>' ]]
+[[ $(codex fork session-id "two words") == "$prefix"$'\n<fork>\n<session-id>\n<two words>' ]]
+[[ $(codex --no-daemon resume --last) == "$prefix"$'\n<resume>\n<--last>' ]]
+[[ $(codex -- --no-daemon) == "$prefix"$'\n<-->\n<--no-daemon>' ]]
 status=0
 CODEX_TEST_EXIT=23 codex --version >/dev/null || status=$?
 [[ $status == 23 ]]
 status=0
 CODEX_TEST_EXIT=24 codex --no-daemon --version >/dev/null || status=$?
 [[ $status == 24 ]]
-printf "Passed Codex no-daemon arguments and exit status.\n"
+printf "Passed Codex terminal defaults, argument forwarding and exit status.\n"
 EOF

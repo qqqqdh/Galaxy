@@ -4,7 +4,7 @@
 
 ## 설치와 사용
 
-1. [Galaxy Terminal 0.4.10 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.10)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
+1. [Galaxy Terminal 0.4.11 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.11)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
 2. Galaxy Terminal을 열고 물리 키보드를 사용하거나, 상단 **키보드**를 눌러 한국어가 설정된 Android 키보드를 엽니다.
 3. `echo '한글 입력 확인'`을 입력합니다. `pwd`로 현재 디렉터리, `stty size`로 터미널 크기를 확인할 수 있습니다.
 
@@ -22,7 +22,7 @@
 
 Ubuntu는 앱에 포함된 PRoot로 실행됩니다. Termux, PC, Android 루팅은 필요 없습니다. 설정한 컴퓨터 이름은 Ubuntu의 `/etc/hostname`과 Bash 프롬프트에 적용됩니다. 계정과 `sudo` 권한의 범위는 Ubuntu 내부입니다. Android 커널을 공유하므로 이 설치에는 디스크 파티션이나 systemd 부팅 단계가 없습니다. [PRoot Android 실행 방식](https://github.com/oonid/pr/blob/7029b1fe8fa84d64339cabe38f9c5be2ea2ae7ac/docs/targetsdk35-compatibility.md)
 
-Ubuntu 셸에서 `codex`를 실행하면 `--no-daemon`이 기본 적용됩니다. Android의 프로세스 시작 시간 조회 제한으로 발생하는 Codex 백그라운드 서버 시작 오류를 피하며, `codex resume`과 `codex fork`에도 적용됩니다.
+Ubuntu 셸에서 `codex`를 실행하면 `--no-daemon`과 `-c tui.disable_paste_burst=true`가 기본 적용됩니다. Android에서 Codex의 백그라운드 서버 시작 오류를 피하고, 빠른 키 입력이 붙여넣기로 묶여 늦게 표시되는 것을 방지합니다. `codex resume`과 `codex fork`에도 적용됩니다.
 
 ## CLI IDE
 

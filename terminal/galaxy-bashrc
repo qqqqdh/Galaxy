@@ -9,17 +9,19 @@ if [ -r ~/.bashrc ]; then
     . ~/.bashrc
 fi
 
-# Android restricts reading other processes' start times required by Codex's daemon.
+# The terminal delivers typing and bracketed paste separately. Codex need not buffer fast typing.
 codex() {
+    local -a defaults=(-c tui.disable_paste_burst=true)
     local argument
     for argument in "$@"; do
         if [[ $argument == --no-daemon ]]; then
-            command codex "$@"
+            command codex "${defaults[@]}" "$@"
             return
         fi
         [[ $argument == -- ]] && break
     done
-    command codex --no-daemon "$@"
+    # Android restricts reading other processes' start times required by Codex's daemon.
+    command codex "${defaults[@]}" --no-daemon "$@"
 }
 
 # Use the guest name in the prompt while PRoot shares Android's kernel hostname.

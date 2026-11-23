@@ -51,7 +51,7 @@ try {
         '-Wl,-z,max-page-size=16384' terminal/ubuntu-session.c -o "$cache/lib/arm64-v8a/libgalaxy_session.so"
     & "$tools/aapt2.exe" compile --dir terminal/res -o "$cache/browser-res.zip"
     & "$tools/aapt2.exe" link -I $platform --manifest terminal/AndroidManifest.xml -A "$cache/assets" `
-        "$cache/browser-res.zip" -o "$cache/base.apk" --version-code 16 --version-name 0.4.10
+        "$cache/browser-res.zip" -o "$cache/base.apk" --version-code 17 --version-name 0.4.11
     Copy-Item -Force "$cache/base.apk" "$cache/packed.apk"
     $archive = [IO.Compression.ZipFile]::Open([IO.Path]::GetFullPath("$cache/packed.apk", $root), 'Update')
     try {

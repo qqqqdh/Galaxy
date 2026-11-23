@@ -21,7 +21,7 @@ final class EditorInput extends EditText {
 
     private boolean resetting;
     private boolean commitOnly;
-    private String committed = "";
+    private String sentText = "";
     private final Runnable flush = this::flushCommitted;
     private final Listener listener;
 
@@ -62,13 +62,30 @@ final class EditorInput extends EditText {
         Editable value = getText();
         String text = value.toString();
         int composing = BaseInputConnection.getComposingSpanStart(value);
-        String stable = composing < 0 ? text : text.substring(0, composing);
-        // Samsung may reselect committed text when switching languages; wait for its replacement.
-        if (composing < 0 || stable.startsWith(committed)) {
-            if (!committed.equals(stable)) listener.edit(committed, stable);
-            committed = stable;
+        boolean sendDraft = false;
+        if (composing >= 0) {
+            int shared = 0;
+            int limit = Math.min(sentText.length(), text.length());
+            while (shared < limit && sentText.charAt(shared) == text.charAt(shared)) shared++;
+            // Samsung keeps English in a composing span until Space, including after Backspace.
+            sendDraft = isAsciiFrom(sentText, shared) && isAsciiFrom(text, Math.max(composing, shared));
         }
-        listener.preview(composing < 0 ? "" : text.substring(Math.min(composing, committed.length())));
+        String ready = composing < 0 || sendDraft ? text : text.substring(0, composing);
+        // Samsung may reselect sent text when switching languages. Wait until its replacement settles.
+        if (composing < 0 || sendDraft || ready.startsWith(sentText)) {
+            if (!sentText.equals(ready)) listener.edit(sentText, ready);
+            sentText = ready;
+        }
+        int previewStart = text.startsWith(sentText) ? Math.max(composing, sentText.length()) : composing;
+        listener.preview(composing < 0 ? "" : text.substring(previewStart));
+    }
+
+    private static boolean isAsciiFrom(String text, int start) {
+        for (int i = start; i < text.length(); i++) {
+            char character = text.charAt(i);
+            if (character < ' ' || character > '~') return false;
+        }
+        return true;
     }
 
     void resetContext() {
@@ -77,7 +94,7 @@ final class EditorInput extends EditText {
         try {
             BaseInputConnection.removeComposingSpans(getText());
             getText().clear();
-            committed = "";
+            sentText = "";
             if (commitOnly) listener.preview("");
         } finally {
             resetting = false;
