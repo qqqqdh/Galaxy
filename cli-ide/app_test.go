@@ -183,17 +183,35 @@ func TestAssistantKeepsCodeVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer screen.Fini()
-	for _, width := range []int{145, 88} {
+	draw := func(width int) {
 		screen.SetSize(width, 36)
 		i.pages.SetRect(0, 0, width, 36)
 		i.app.GetBeforeDrawFunc()(screen)
 		i.pages.Draw(screen)
+	}
+	for _, width := range []int{145, 110, 88} {
+		draw(width)
 		x, y, w, h := i.active.editor.GetRect()
 		ax, ay, aw, ah := i.assistant.GetRect()
-		if min(w, aw) < 40 || min(h, ah) < 8 || (width >= 106 && x+w > ax) || (width < 106 && y+h > ay) {
+		fx, _, fw, _ := i.tree.GetRect()
+		if !i.treeShown || fw < 20 || fx+fw > x {
+			t.Fatalf("file tree is missing from the split at %d columns", width)
+		}
+		if min(w, aw) < 40 || min(h, ah) < 8 || (width >= 120 && x+w > ax) || (width < 120 && y+h > ay) {
 			t.Fatalf("overlapping or cramped editor/AI at %d columns: editor %d,%d %dx%d, AI %d,%d %dx%d", width, x, y, w, h, ax, ay, aw, ah)
 		}
 	}
+	i.toggleTree()
+	draw(145)
+	if i.treeShown || !i.assistantOpen || !i.active.editor.HasFocus() {
+		t.Fatal("closing the tree should keep AI visible and focus the editor")
+	}
+	i.toggleTree()
+	draw(145)
+	if !i.treeShown || !i.tree.HasFocus() {
+		t.Fatal("opening the tree should focus the file list")
+	}
+	i.app.SetFocus(i.assistant)
 	swap := tcell.NewEventKey(tcell.KeyCtrlT, 0, tcell.ModNone)
 	i.handleKey(swap)
 	if !i.active.editor.HasFocus() || !i.assistantOpen || i.active.editor.GetText() != "const keep = 1" {

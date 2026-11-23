@@ -148,7 +148,7 @@ func newIDE(root string, config config) *ide {
 	for _, item := range []struct {
 		label string
 		run   func()
-	}{{"파일", i.fileMenu}, {"실행", i.taskMenu}, {"AI", i.assistantMenu}, {"도움말", i.help}} {
+	}{{"탐색기", i.toggleTree}, {"파일", i.fileMenu}, {"실행", i.taskMenu}, {"AI", i.assistantMenu}, {"도움말", i.help}} {
 		button := tview.NewButton(item.label).SetSelectedFunc(item.run)
 		button.SetStyle(tcell.StyleDefault.Background(panel).Foreground(foreground))
 		header.AddItem(button, 10, 0, false)
@@ -211,11 +211,24 @@ func newIDE(root string, config config) *ide {
 			}
 			assistantShown = i.assistantOpen
 		}
+		visible := i.showTree && width >= 80
+		splitWidth := assistantSplitWidth
+		if visible {
+			splitWidth = 120
+		}
 		direction := tview.FlexColumn
-		if i.assistantOpen && width < assistantSplitWidth {
+		if i.assistantOpen && width < splitWidth {
 			direction = tview.FlexRow
 		}
 		workspace.SetDirection(direction)
+		treeWidth, codeWidth := 26, 0
+		if i.assistantOpen && visible && direction == tview.FlexColumn {
+			if width < 176 {
+				treeWidth = 20
+			}
+			codeWidth = treeWidth + (width-treeWidth)/2
+		}
+		workspace.ResizeItem(code, codeWidth, 46)
 		dockHeight := 0
 		if i.dockOpen {
 			dockHeight = max(1, min(10, height/4))
@@ -228,11 +241,10 @@ func newIDE(root string, config config) *ide {
 			i.dialogGrid.SetRows(0, min(i.dialogHeight, max(1, height-2)), 0).
 				SetColumns(0, min(i.dialogWidth, max(1, width-2)), 0)
 		}
-		visible := i.showTree && width >= 80 && (!i.assistantOpen || width < assistantSplitWidth || width >= 176)
 		if visible != i.treeShown {
 			i.body.RemoveItem(i.tree)
 			if visible {
-				i.body.AddItem(i.tree, 26, 0, false)
+				i.body.AddItem(i.tree, treeWidth, 0, false)
 				i.body.RemoveItem(editing)
 				i.body.AddItem(editing, 0, 1, true)
 			} else if i.tree.HasFocus() && i.active != nil {
@@ -243,6 +255,9 @@ func newIDE(root string, config config) *ide {
 				})
 			}
 			i.treeShown = visible
+		}
+		if visible {
+			i.body.ResizeItem(i.tree, treeWidth, 0)
 		}
 		i.updateStatus()
 		return false
@@ -352,6 +367,17 @@ func (i *ide) openFile(path string) error {
 }
 
 func (i *ide) updateStatus() {
+	if i.treeShown && i.tree.HasFocus() {
+		if node := i.tree.GetCurrentNode(); node != nil {
+			if path, ok := node.GetReference().(string); ok {
+				if relative, err := filepath.Rel(i.root, path); err == nil && relative != "." {
+					path = relative
+				}
+				i.status.SetText(" " + tview.Escape(path))
+				return
+			}
+		}
+	}
 	if i.active == nil {
 		return
 	}
@@ -498,7 +524,7 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyF1:
 		i.help()
 	case tcell.KeyF2:
-		i.showTree = !i.showTree
+		i.toggleTree()
 	case tcell.KeyF3:
 		i.findNext()
 	case tcell.KeyF4:
@@ -530,6 +556,20 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return event
 	}
 	return nil
+}
+
+func (i *ide) toggleTree() {
+	_, _, width, _ := i.pages.GetRect()
+	if width > 0 && width < 80 {
+		i.quickOpen()
+		return
+	}
+	i.showTree = !i.showTree
+	if i.showTree {
+		i.app.SetFocus(i.tree)
+	} else if i.active != nil {
+		i.app.SetFocus(i.active.editor)
+	}
 }
 
 func (i *ide) refreshTree() {
