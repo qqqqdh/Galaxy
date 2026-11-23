@@ -434,6 +434,16 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return event
 	}
+	if i.active != nil && i.active.editor.HasFocus() && event.Modifiers() == tcell.ModAlt {
+		switch event.Key() {
+		case tcell.KeyLeft:
+			i.active.syntax.pageColumns(-1)
+			return nil
+		case tcell.KeyRight:
+			i.active.syntax.pageColumns(1)
+			return nil
+		}
+	}
 	if i.active != nil && i.active.editor.HasFocus() && toolsFor(i.active.disk.path).id != "" {
 		switch event.Key() {
 		case tcell.KeyF12, tcell.KeyCtrlRightSq:

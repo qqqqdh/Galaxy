@@ -25,6 +25,11 @@ type syntaxView struct {
 	tabSize             int
 	spans               []colorSpan
 	marks               []colorSpan
+	columns             int
+	columnsRevision     uint64
+	columnsTabSize      int
+	scrollDrag          bool
+	scrollX             int
 }
 
 type colorSpan struct {
@@ -55,6 +60,7 @@ func (v *syntaxView) Draw(screen tcell.Screen) {
 		v.Select(r[0], r[1])
 		v.TextArea.Draw(screen)
 	}
+	v.drawColumnBar(screen)
 	if v.lexer == nil || v.GetTextLength() == 0 {
 		return
 	}

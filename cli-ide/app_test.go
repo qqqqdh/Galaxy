@@ -223,6 +223,52 @@ func TestAssistantKeepsCodeVisible(t *testing.T) {
 	}
 }
 
+func TestHorizontalScrollKeepsCaretAndSelection(t *testing.T) {
+	i := newIDE(t.TempDir(), config{IndentSize: 4})
+	i.newFile()
+	d := i.active
+	start := "\t한글"
+	d.editor.SetText(start+strings.Repeat("x", 90), false)
+	d.editor.SetRect(4, 2, 42, 8)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	d.syntax.Draw(screen)
+	d.editor.Select(0, len(start))
+	check := func(want int) {
+		t.Helper()
+		row, col := d.editor.GetOffset()
+		_, a, b := d.editor.GetSelection()
+		if row != 0 || col != want || a != 0 || b != len(start) {
+			t.Fatalf("scroll = %d,%d, selection = %d:%d; want column %d and the original selection", row, col, a, b, want)
+		}
+	}
+	x, y, width := d.syntax.columnBarRect()
+	handle := d.syntax.MouseHandler()
+	mouse := func(action tview.MouseAction, col, row int, mod tcell.ModMask) {
+		t.Helper()
+		if ok, _ := handle(action, tcell.NewEventMouse(col, row, tcell.ButtonNone, mod), func(p tview.Primitive) { i.app.SetFocus(p) }); !ok {
+			t.Fatal("scroll event was not consumed", action)
+		}
+	}
+	mouse(tview.MouseLeftDown, x+width-1, y, tcell.ModNone)
+	check(20)
+	mouse(tview.MouseScrollDown, x+10, y-2, tcell.ModShift)
+	check(24)
+	mouse(tview.MouseLeftDown, x+14, y, tcell.ModNone)
+	mouse(tview.MouseMove, x+22, y, tcell.ModNone)
+	mouse(tview.MouseLeftUp, x+22, y, tcell.ModNone)
+	check(32)
+	i.handleKey(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModAlt))
+	check(12)
+	for range 8 {
+		mouse(tview.MouseLeftDown, x+width-1, y, tcell.ModNone)
+	}
+	check(59) // Four tab cells, four Hangul cells, 90 ASCII cells, and room for the end caret.
+}
+
 func TestEditorWorkflow(t *testing.T) {
 	root := t.TempDir()
 	i := newIDE(root, config{IndentSize: 4})
