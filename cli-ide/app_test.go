@@ -173,6 +173,38 @@ func TestCompletionPopupFollowsCursor(t *testing.T) {
 	}
 }
 
+func TestAssistantKeepsCodeVisible(t *testing.T) {
+	i := newIDE(t.TempDir(), config{IndentSize: 4})
+	i.newFile()
+	i.active.editor.SetText("const keep = 1", false)
+	i.showAssistant()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	for _, width := range []int{145, 88} {
+		screen.SetSize(width, 36)
+		i.pages.SetRect(0, 0, width, 36)
+		i.app.GetBeforeDrawFunc()(screen)
+		i.pages.Draw(screen)
+		x, y, w, h := i.active.editor.GetRect()
+		ax, ay, aw, ah := i.assistant.GetRect()
+		if min(w, aw) < 40 || min(h, ah) < 8 || (width >= 106 && x+w > ax) || (width < 106 && y+h > ay) {
+			t.Fatalf("overlapping or cramped editor/AI at %d columns: editor %d,%d %dx%d, AI %d,%d %dx%d", width, x, y, w, h, ax, ay, aw, ah)
+		}
+	}
+	swap := tcell.NewEventKey(tcell.KeyCtrlT, 0, tcell.ModNone)
+	i.handleKey(swap)
+	if !i.active.editor.HasFocus() || !i.assistantOpen || i.active.editor.GetText() != "const keep = 1" {
+		t.Fatal("switching to the editor should keep both panes and the document")
+	}
+	i.handleKey(swap)
+	if !i.assistant.HasFocus() {
+		t.Fatal("second switch should return focus to AI")
+	}
+}
+
 func TestEditorWorkflow(t *testing.T) {
 	root := t.TempDir()
 	i := newIDE(root, config{IndentSize: 4})

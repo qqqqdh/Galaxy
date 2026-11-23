@@ -20,13 +20,19 @@ type shellPane struct {
 	term    *vt.Emulator
 	file    *os.File
 	message string
+	scroll  int
 }
 
 func (s *shellPane) start(dir string) {
+	s.run(dir, shellTask(), nil)
+}
+
+func (s *shellPane) run(dir string, job task, onExit func(error)) {
 	if s.file != nil {
 		return
 	}
-	args := shellTask().Args
+	s.close()
+	args := job.Args
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
@@ -34,7 +40,7 @@ func (s *shellPane) start(dir string) {
 	w, h = max(w, 2), max(h, 1)
 	file, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(w), Rows: uint16(h)})
 	if err != nil {
-		s.message = fmt.Sprintf("셸 시작 실패 · %v", err)
+		s.message = fmt.Sprintf("%s 시작 실패 · %v", job.Name, err)
 		return
 	}
 	em := vt.NewEmulator(w, h)
@@ -55,11 +61,18 @@ func (s *shellPane) start(dir string) {
 				break
 			}
 		}
-		_ = cmd.Wait()
+		err := cmd.Wait()
 		s.app.QueueUpdateDraw(func() {
 			if s.file == file {
-				s.close()
-				s.message = "셸 종료 · 터미널 탭을 누르면 다시 엽니다"
+				if onExit != nil {
+					_ = s.file.Close()
+					_ = em.Close()
+					s.file = nil
+					onExit(err)
+				} else {
+					s.close()
+					s.message = "셸 종료 · 터미널 탭을 누르면 다시 엽니다"
+				}
 			}
 		})
 	}()
@@ -68,10 +81,13 @@ func (s *shellPane) start(dir string) {
 func (s *shellPane) close() {
 	if s.file != nil {
 		_ = s.file.Close()
-		_ = s.term.Close()
 		s.file = nil
+	}
+	if s.term != nil {
+		_ = s.term.Close()
 		s.term = nil
 	}
+	s.scroll = 0
 }
 
 func termColor(c color.Color, fallback tcell.Color) tcell.Color {
@@ -95,11 +111,23 @@ func (s *shellPane) Draw(screen tcell.Screen) {
 	}
 	if w != em.Width() || h != em.Height() {
 		em.Resize(w, h)
-		_ = pty.Setsize(s.file, &pty.Winsize{Cols: uint16(w), Rows: uint16(h)})
+		if s.file != nil {
+			_ = pty.Setsize(s.file, &pty.Winsize{Cols: uint16(w), Rows: uint16(h)})
+		}
 	}
+	history := em.ScrollbackLen()
+	if em.IsAltScreen() {
+		history = 0
+	}
+	s.scroll = min(history, s.scroll)
 	for row := 0; row < h; row++ {
 		for col := 0; col < w; col++ {
-			cell := em.CellAt(col, row)
+			var cell *uv.Cell
+			if offset := row - s.scroll; offset < 0 {
+				cell = em.ScrollbackCellAt(col, history+offset)
+			} else {
+				cell = em.CellAt(col, offset)
+			}
 			if cell == nil || cell.Width == 0 {
 				continue
 			}
@@ -112,7 +140,7 @@ func (s *shellPane) Draw(screen tcell.Screen) {
 			screen.SetContent(x+col, y+row, r[0], r[1:], style)
 		}
 	}
-	if s.HasFocus() && !em.CursorHidden() {
+	if s.file != nil && s.scroll == 0 && s.HasFocus() && !em.CursorHidden() {
 		p := em.CursorPosition()
 		screen.ShowCursor(x+p.X, y+p.Y)
 	}
@@ -126,7 +154,7 @@ var terminalKeys = map[tcell.Key]rune{
 
 func (s *shellPane) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
 	return s.WrapInputHandler(func(e *tcell.EventKey, _ func(tview.Primitive)) {
-		if s.term == nil {
+		if s.file == nil {
 			return
 		}
 		key := vt.KeyPressEvent{Code: terminalKeys[e.Key()]}
@@ -146,22 +174,55 @@ func (s *shellPane) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) 
 		if e.Modifiers()&tcell.ModAlt != 0 {
 			key.Mod |= uv.ModAlt
 		}
+		s.scroll = 0
 		s.term.SendKey(key)
 	})
 }
 func (s *shellPane) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
 	return s.WrapMouseHandler(func(action tview.MouseAction, e *tcell.EventMouse, focus func(tview.Primitive)) (bool, tview.Primitive) {
-		if action == tview.MouseLeftDown && s.InRect(e.Position()) {
-			focus(s)
-			return true, nil
+		if !s.InRect(e.Position()) {
+			return false, nil
 		}
-		return false, nil
+		if action == tview.MouseLeftDown {
+			focus(s)
+		}
+		x, y, w, h := s.GetInnerRect()
+		col, row := e.Position()
+		if s.term == nil || col < x || row < y || col >= x+w || row >= y+h {
+			return action == tview.MouseLeftDown, nil
+		}
+		mouse := uv.Mouse{X: col - x, Y: row - y, Button: uv.MouseLeft}
+		switch action {
+		case tview.MouseLeftDown, tview.MouseLeftUp:
+			if s.file != nil && s.scroll == 0 {
+				if action == tview.MouseLeftDown {
+					s.term.SendMouse(uv.MouseClickEvent(mouse))
+				} else {
+					s.term.SendMouse(uv.MouseReleaseEvent(mouse))
+				}
+			}
+		case tview.MouseScrollUp, tview.MouseScrollDown:
+			mouse.Button = uv.MouseWheelUp
+			delta := 3
+			if action == tview.MouseScrollDown {
+				mouse.Button, delta = uv.MouseWheelDown, -3
+			}
+			if history := s.term.ScrollbackLen(); !s.term.IsAltScreen() && history > 0 {
+				s.scroll = max(0, min(history, s.scroll+delta))
+			} else if s.file != nil {
+				s.term.SendMouse(uv.MouseWheelEvent(mouse))
+			}
+		default:
+			return false, nil
+		}
+		return true, nil
 	})
 }
 
 func (s *shellPane) PasteHandler() func(string, func(tview.Primitive)) {
 	return s.WrapPasteHandler(func(text string, _ func(tview.Primitive)) {
-		if s.term != nil {
+		if s.file != nil {
+			s.scroll = 0
 			s.term.Paste(text)
 		}
 	})
@@ -177,12 +238,12 @@ func (i *ide) makeDock() *tview.Flex {
 	i.hints = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)
 	i.hints.SetBorder(true).SetTitle(" 자동완성 ").SetBackgroundColor(panel)
 	i.problemButton = tview.NewButton("문제 (0)").SetSelectedFunc(func() { i.openDock("문제") })
-	bar := tview.NewFlex().AddItem(i.problemButton, 14, 0, false).
-		AddItem(tview.NewButton("터미널").SetSelectedFunc(func() { i.openDock("터미널") }), 12, 0, false).
-		AddItem(tview.NewButton("터미널 확대").SetSelectedFunc(i.toggleFullTerminal), 14, 0, false).
-		AddItem(tview.NewButton("검색").SetSelectedFunc(func() { i.openDock("검색") }), 9, 0, false).
-		AddItem(tview.NewButton("변경사항").SetSelectedFunc(func() { i.openDock("변경사항") }), 12, 0, false).
-		AddItem(tview.NewButton("접기").SetSelectedFunc(i.hideDock), 9, 0, false)
+	bar := tview.NewFlex().AddItem(i.problemButton, 0, 14, false).
+		AddItem(tview.NewButton("터미널").SetSelectedFunc(func() { i.openDock("터미널") }), 0, 12, false).
+		AddItem(tview.NewButton("터미널 확대").SetSelectedFunc(i.toggleFullTerminal), 0, 14, false).
+		AddItem(tview.NewButton("검색").SetSelectedFunc(func() { i.openDock("검색") }), 0, 9, false).
+		AddItem(tview.NewButton("변경사항").SetSelectedFunc(func() { i.openDock("변경사항") }), 0, 12, false).
+		AddItem(tview.NewButton("접기").SetSelectedFunc(i.hideDock), 0, 9, false)
 	i.dockOpen = true
 	return bar
 }

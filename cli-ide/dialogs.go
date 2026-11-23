@@ -258,9 +258,10 @@ Android 클립보드는 터미널의 붙여넣기 메뉴 또는 Ctrl+Shift+V를 
 Ctrl+R          프로젝트 build 작업 · 현재 언어 실행 또는 웹 미리보기
 실행 메뉴       프로젝트 test 작업 선택
 F5              실행 작업 메뉴
-상단 AI         Codex · Claude Code · AGY 전체 화면 실행
+상단 AI         Codex · Claude Code · AGY를 코드 옆에서 실행
 Ctrl+J          문제 목록 · Enter로 오류 위치 이동
-Ctrl+T          하단 터미널 / 편집기로 전환
+Ctrl+T          AI 창이 열려 있으면 코드 / AI 사이 전환
+                AI 창이 닫혀 있으면 하단 터미널 / 편집기 전환
 F8              기존 프로젝트 터미널 전체 화면 확대 / 복귀
 F7              전체 화면 프로젝트 셸
 .galaxy-ide.json의 tasks에 명령을 추가하면 F5에 표시됩니다.

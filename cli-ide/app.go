@@ -63,6 +63,11 @@ type ide struct {
 	cancel                     context.CancelFunc
 	dock                       *tview.Pages
 	shell                      *shellPane
+	assistant                  *shellPane
+	assistantPanel             *tview.Flex
+	assistantTitle             *tview.TextView
+	assistantOpen              bool
+	assistantName              string
 	problemList                *tview.List
 	problemButton              *tview.Button
 	app                        *tview.Application
@@ -155,9 +160,13 @@ func newIDE(root string, config config) *ide {
 	footer.SetBackgroundColor(panel)
 	footer.SetTextColor(muted)
 	bar := i.makeDock()
+	i.assistantPanel = i.makeAssistantPanel()
+	code := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(i.body, 0, 1, true).AddItem(bar, 1, 0, false).AddItem(i.dock, 0, 0, false)
+	workspace := tview.NewFlex().AddItem(code, 0, 46, true)
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(header, 1, 0, false).AddItem(i.body, 0, 1, true).
-		AddItem(bar, 1, 0, false).AddItem(i.dock, 6, 0, false).AddItem(i.status, 1, 0, false).AddItem(footer, 1, 0, false)
+		AddItem(header, 1, 0, false).AddItem(workspace, 0, 1, true).
+		AddItem(i.status, 1, 0, false).AddItem(footer, 1, 0, false)
 	i.pages.AddPage("main", layout, true, true)
 	fullBar := tview.NewFlex().AddItem(tview.NewButton("편집기로").SetSelectedFunc(i.toggleFullTerminal), 12, 0, false).
 		AddItem(tview.NewTextView().SetText(" 프로젝트 터미널 · Ctrl+T 돌아가기"), 0, 1, false)
@@ -168,6 +177,8 @@ func newIDE(root string, config config) *ide {
 	i.app.SetAfterDrawFunc(i.drawHints)
 	i.app.SetMouseCapture(i.hintMouse)
 	var editorTitle string
+	var assistantShown bool
+	var assistantFocused bool
 	i.app.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
 		if i.acceptHint != nil && i.active != nil {
 			_, a, b := i.active.editor.GetSelection()
@@ -176,7 +187,7 @@ func newIDE(root string, config config) *ide {
 			}
 		}
 		title := "Galaxy IDE"
-		if i.shell.HasFocus() {
+		if i.shell.HasFocus() || i.assistant.HasFocus() {
 			title = "Galaxy IDE · 터미널"
 		} else if (i.pickerField != nil && i.pickerField.HasFocus()) || i.searchField.HasFocus() ||
 			(!i.dialog && i.active != nil && i.active.editor.HasFocus() && !i.active.editor.HasSelection()) {
@@ -187,16 +198,37 @@ func newIDE(root string, config config) *ide {
 			editorTitle = title
 		}
 		width, height := screen.Size()
+		focused := i.assistant.HasFocus()
+		if assistantFocused && !focused {
+			i.refreshDocuments()
+		}
+		assistantFocused = focused
+		if i.assistantOpen != assistantShown {
+			if i.assistantOpen {
+				workspace.AddItem(i.assistantPanel, 0, 54, false)
+			} else {
+				workspace.RemoveItem(i.assistantPanel)
+			}
+			assistantShown = i.assistantOpen
+		}
+		direction := tview.FlexColumn
+		if i.assistantOpen && width < assistantSplitWidth {
+			direction = tview.FlexRow
+		}
+		workspace.SetDirection(direction)
 		dockHeight := 0
 		if i.dockOpen {
 			dockHeight = max(1, min(10, height/4))
+			if i.assistantOpen {
+				dockHeight = max(1, min(5, height/7))
+			}
 		}
-		layout.ResizeItem(i.dock, dockHeight, 0)
+		code.ResizeItem(i.dock, dockHeight, 0)
 		if i.dialog {
 			i.dialogGrid.SetRows(0, min(i.dialogHeight, max(1, height-2)), 0).
 				SetColumns(0, min(i.dialogWidth, max(1, width-2)), 0)
 		}
-		visible := i.showTree && width >= 80
+		visible := i.showTree && width >= 80 && (!i.assistantOpen || width < assistantSplitWidth || width >= 176)
 		if visible != i.treeShown {
 			i.body.RemoveItem(i.tree)
 			if visible {
@@ -361,14 +393,16 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 	if event.Key() == tcell.KeyCtrlT {
-		if i.shell.HasFocus() {
+		if i.shell.HasFocus() || i.assistant.HasFocus() {
 			i.app.SetFocus(i.active.editor)
+		} else if i.assistantOpen {
+			i.app.SetFocus(i.assistant)
 		} else {
 			i.openDock("터미널")
 		}
 		return nil
 	}
-	if i.shell.HasFocus() {
+	if i.shell.HasFocus() || i.assistant.HasFocus() {
 		if event.Key() == tcell.KeyCtrlC {
 			return tcell.NewEventKey(tcell.KeyCtrlC, 0, tcell.ModNone)
 		}
@@ -646,6 +680,7 @@ func (i *ide) quit(index int) {
 			i.searchCancel()
 		}
 		i.shell.close()
+		i.assistant.close()
 		i.app.Stop()
 		return
 	}

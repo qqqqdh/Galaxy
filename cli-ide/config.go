@@ -13,6 +13,7 @@ type task struct {
 	Args        []string `json:"args"`
 	Group       string   `json:"group,omitempty"`
 	buildAndRun bool
+	assistant   bool
 }
 
 type config struct {

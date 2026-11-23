@@ -130,21 +130,27 @@ func (p nativeProject) buildArgs(active string) ([]string, error) {
 }
 
 var assistantTasks = []task{
-	{Name: "Codex", Args: []string{"codex", "--no-daemon", "-c", "tui.disable_paste_burst=true"}},
-	{Name: "Claude Code", Args: []string{"claude"}},
-	{Name: "AGY", Args: []string{"agy"}},
+	{Name: "Codex", Args: []string{"codex", "--no-daemon", "-c", "tui.disable_paste_burst=true"}, assistant: true},
+	{Name: "Claude Code", Args: []string{"claude"}, assistant: true},
+	{Name: "AGY", Args: []string{"agy"}, assistant: true},
 }
 
 func (i *ide) assistantMenu() {
 	list := tview.NewList().ShowSecondaryText(false)
-	list.SetBorder(true).SetTitle(" AI · 전체 화면에서 실행 ")
+	list.SetBorder(true).SetTitle(" AI · 코드와 나란히 보기 ")
+	if i.assistantName != "" {
+		list.AddItem(i.assistantName+" 대화 보기", "", 0, func() {
+			i.dismiss()
+			i.showAssistant()
+		})
+	}
 	for _, entry := range assistantTasks {
 		list.AddItem(entry.Name, "", 0, func() {
 			i.dismiss()
 			i.runTask(entry)
 		})
 	}
-	i.showDialog(list, 34, 6)
+	i.showDialog(list, 40, list.GetItemCount()+3)
 }
 
 func (i *ide) taskMenu() {
@@ -200,6 +206,10 @@ func (i *ide) defaultBuild() (task, bool) {
 }
 
 func (i *ide) runTask(t task) {
+	if t.assistant {
+		i.openAssistant(t)
+		return
+	}
 	if t.buildAndRun || t.Group != "" {
 		for _, d := range i.documents {
 			if !d.dirty() {
