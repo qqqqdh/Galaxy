@@ -39,7 +39,7 @@ jobs:
       - name: Checksum the APK
         run: |
           cd dist
-          sha256sum Galaxy-Terminal-Preview.apk > SHA256SUMS.txt
+          sha256sum Galaxy-Terminal-Preview.apk > SHA256SUMS
       - name: Publish GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -47,4 +47,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
             --title "Galaxy Terminal ${GITHUB_REF_NAME#terminal-v}" \
             --notes 'Galaxy Terminal Preview는 별도 앱으로 설치되며 기존 Galaxy Terminal의 Ubuntu 데이터를 공유하지 않습니다. Ubuntu 도구는 [파일 관리자](https://github.com/qqqqdh/Galaxy/tree/main/file-manager)와 [서버 실행 관리자](https://github.com/qqqqdh/Galaxy/tree/main/server-manager)의 릴리스에서 각각 받을 수 있습니다.' \
-            dist/Galaxy-Terminal-Preview.apk dist/SHA256SUMS.txt
+            dist/Galaxy-Terminal-Preview.apk dist/SHA256SUMS

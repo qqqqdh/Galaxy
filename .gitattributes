@@ -1,0 +1,5 @@
+*.go text eol=lf
+*.sh text eol=lf
+terminal/galaxy-bashrc text eol=lf
+terminal/galaxy-w text eol=lf
+terminal/galaxy.mkshrc text eol=lf
