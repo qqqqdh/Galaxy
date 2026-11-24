@@ -1,0 +1,55 @@
+name: Publish Galaxy Ubuntu tool
+
+on:
+  push:
+    tags:
+      - 'file-manager-v*'
+      - 'server-manager-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: '1.24.2'
+          cache-dependency-path: |
+            file-manager/go.sum
+            server-manager/go.sum
+            tools/go.sum
+      - name: Select release and build Linux binaries
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF_NAME" in
+            file-manager-v*) component=file-manager; command=galaxy-files ;;
+            server-manager-v*) component=server-manager; command=galaxy-servers ;;
+          esac
+          version=${GITHUB_REF_NAME#"$component-v"}
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          record="versions/$component/$version"
+          test -s "$record/README.md"
+          test -s "$record/SHA256SUMS"
+          bash "$component/build.sh" amd64
+          bash "$component/build.sh" arm64
+          test "$(dist/"$command-linux-amd64" --version)" = "$command $version"
+          (cd dist && sha256sum -c "../$record/SHA256SUMS")
+          printf 'COMPONENT=%s\nCOMMAND=%s\nVERSION=%s\n' "$component" "$command" "$version" >> "$GITHUB_ENV"
+      - name: Publish the selected tool
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          record="versions/$COMPONENT/$VERSION"
+          title=$(head -n 1 "$record/README.md")
+          tail -n +2 "$record/README.md" > "$RUNNER_TEMP/galaxy-release-notes.md"
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+            --title "${title#\# }" --notes-file "$RUNNER_TEMP/galaxy-release-notes.md" \
+            "dist/$COMMAND-linux-arm64" "dist/$COMMAND-linux-amd64" "dist/$COMMAND-LICENSES.txt" \
+            "$record/SHA256SUMS"

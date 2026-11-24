@@ -14,10 +14,6 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with:
-          go-version-file: tools/go.mod
-          cache-dependency-path: tools/go.sum
       - name: Install Android SDK packages
         run: |
           export ANDROID_SDK_ROOT="$RUNNER_TEMP/galaxy-android-sdk"
@@ -40,17 +36,15 @@ jobs:
             printf '%s' "$PREVIEW_KEYSTORE_BASE64" | base64 --decode > "$GALAXY_SIGNING_KEYSTORE"
           fi
           bash terminal/build.sh
-      - name: Build Galaxy tools and checksums
+      - name: Checksum the APK
         run: |
-          bash tools/build.sh arm64
           cd dist
-          sha256sum Galaxy-Terminal-Preview.apk galaxy-files-linux-arm64 galaxy-servers-linux-arm64 galaxy-tools-LICENSES.txt > SHA256SUMS.txt
+          sha256sum Galaxy-Terminal-Preview.apk > SHA256SUMS.txt
       - name: Publish GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
             --title "Galaxy Terminal ${GITHUB_REF_NAME#terminal-v}" \
-            --notes '파일 관리자(galaxy-files), 서버 실행 관리자(galaxy-servers), Android 파일 전송을 추가했습니다. Galaxy Terminal Preview는 별도 앱으로 설치되며 기존 Galaxy Terminal의 Ubuntu 데이터를 공유하지 않습니다. ARM64 Galaxy 도구는 기존 Galaxy Terminal의 Ubuntu에서도 실행할 수 있습니다.' \
-            dist/Galaxy-Terminal-Preview.apk dist/galaxy-files-linux-arm64 dist/galaxy-servers-linux-arm64 \
-            dist/galaxy-tools-LICENSES.txt dist/SHA256SUMS.txt
+            --notes 'Galaxy Terminal Preview는 별도 앱으로 설치되며 기존 Galaxy Terminal의 Ubuntu 데이터를 공유하지 않습니다. Ubuntu 도구는 [파일 관리자](https://github.com/qqqqdh/Galaxy/tree/main/file-manager)와 [서버 실행 관리자](https://github.com/qqqqdh/Galaxy/tree/main/server-manager)의 릴리스에서 각각 받을 수 있습니다.' \
+            dist/Galaxy-Terminal-Preview.apk dist/SHA256SUMS.txt

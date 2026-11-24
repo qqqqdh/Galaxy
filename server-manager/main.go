@@ -10,11 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"galaxy.local/tools/internal/ui"
+	"galaxy.local/tools/ui"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"golang.org/x/sys/unix"
 )
+
+const version = "0.1.0"
 
 type manager struct {
 	*ui.Screen
@@ -37,8 +39,16 @@ func run() error {
 	if len(os.Args) == 5 && os.Args[1] == "--worker" {
 		return serve(serverRun{os.Args[2]}, os.Args[3], os.Args[4])
 	}
-	flag.Usage = func() { fmt.Fprintln(flag.CommandLine.Output(), "사용법: galaxy-servers [프로젝트 폴더]") }
+	showVersion := flag.Bool("version", false, "버전 표시")
+	flag.Usage = func() {
+		fmt.Fprintln(flag.CommandLine.Output(), "사용법: galaxy-servers [프로젝트 폴더]")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("galaxy-servers " + version)
+		return nil
+	}
 	if flag.NArg() > 1 {
 		flag.Usage()
 		os.Exit(2)

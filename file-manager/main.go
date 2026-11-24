@@ -8,10 +8,12 @@ import (
 	"slices"
 	"strings"
 
-	"galaxy.local/tools/internal/ui"
+	"galaxy.local/tools/ui"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+const version = "0.1.0"
 
 type fileManager struct {
 	*ui.Screen
@@ -23,8 +25,16 @@ type fileManager struct {
 }
 
 func main() {
-	flag.Usage = func() { fmt.Fprintln(flag.CommandLine.Output(), "사용법: galaxy-files [폴더]") }
+	showVersion := flag.Bool("version", false, "버전 표시")
+	flag.Usage = func() {
+		fmt.Fprintln(flag.CommandLine.Output(), "사용법: galaxy-files [폴더]")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("galaxy-files " + version)
+		return
+	}
 	if flag.NArg() > 1 {
 		flag.Usage()
 		os.Exit(2)

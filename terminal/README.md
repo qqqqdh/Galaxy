@@ -34,7 +34,7 @@ Ubuntu 셸과 Galaxy IDE 하단 터미널은 별도의 TTY로 로그인 목록�
 
 ## 파일과 개발 서버
 
-Ubuntu에서 `galaxy-files`로 파일을 정리하고 `galaxy-servers`로 프로젝트별 개발 서버를 시작하거나 중지할 수 있습니다. [Galaxy Ubuntu 도구](../tools/)에서 빌드와 설치 방법을 확인하세요.
+Ubuntu에서는 [Galaxy 파일 관리자](../file-manager/)와 [Galaxy 서버 실행 관리자](../server-manager/)를 각각 설치할 수 있습니다. `galaxy-files`로 파일을 정리하고 `galaxy-servers`로 프로젝트별 개발 서버를 시작하거나 중지할 수 있습니다.
 
 Android 파일 전송 기능이 포함된 APK에서는 Ubuntu 상단 **⋯ → Android 파일 전송**으로 파일을 가져오거나 저장할 수 있습니다. 받은 파일과 Android로 보낼 파일은 Ubuntu의 `/mnt/galaxy-transfer`에 둡니다.
 
