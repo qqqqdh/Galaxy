@@ -2,12 +2,22 @@
 
 갤럭시 탭에서 Ubuntu를 열고 코드를 편집·빌드할 수 있는 Android 터미널과 Ubuntu 개발 도구입니다.
 
-| 프로그램 | 다운로드 | 소스와 사용법 | 버전별 기록 |
+| 프로그램 | 공식 다운로드 | 소스와 사용법 | 버전별 기록 |
 | --- | --- | --- | --- |
 | Galaxy Terminal (Android) | [0.4.14 APK](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.14) | [터미널 사용법과 빌드](terminal/) | [터미널 배포 기록](versions/terminal/) |
 | Galaxy IDE (Ubuntu ARM64) | [0.1.20 실행 파일](https://github.com/qqqqdh/Galaxy/releases/tag/ide-v0.1.20) | [IDE 사용법과 빌드](cli-ide/) | [IDE 변경 이력](cli-ide/CHANGELOG.md) |
 | Galaxy 파일 관리자 (Ubuntu) | [0.1.0 실행 파일](https://github.com/qqqqdh/Galaxy/releases/tag/file-manager-v0.1.0) | [파일 관리자](file-manager/) | [파일 관리자 버전 기록](versions/file-manager/) |
 | Galaxy 서버 실행 관리자 (Ubuntu) | [0.1.0 실행 파일](https://github.com/qqqqdh/Galaxy/releases/tag/server-manager-v0.1.0) | [서버 실행 관리자](server-manager/) | [서버 실행 관리자 버전 기록](versions/server-manager/) |
+
+## main에 반영된 변경 사항
+
+위 표의 다운로드는 공개 릴리스 기준입니다. 아래 내용은 현재 `main` 소스에 반영된 수정입니다.
+
+- Galaxy Terminal에서 `cat` 같은 프로그램을 실행 중에도 조합 중인 한글을 입력 줄에 표시하고 커서를 글자 뒤에 둡니다. 화면 방향키는 한글을 확정한 뒤 전송합니다.
+- Galaxy IDE에서 자동완성 후보를 클릭하거나 터치해 적용할 수 있습니다. Claude 로그인 URL과 다음 줄의 안내 문구를 구분하고, AI 전환과 긴 붙여넣기 처리도 수정했습니다.
+- Galaxy 파일 관리자는 PAX 전역 헤더가 있는 GitHub 소스 TAR.GZ를 풀 수 있습니다. 서버 실행 관리자의 동시 로그 쓰기도 수정했습니다.
+
+[수정 커밋](https://github.com/qqqqdh/Galaxy/commit/c1947c388f7220e6986b92cf08a4708330185dfc)
 
 ## Galaxy Terminal 설치
 
