@@ -4,7 +4,9 @@ const cache = path.resolve(__dirname, '../.build-cache');
 const { chromium } = require(path.join(cache, 'vscode/node_modules/playwright'));
 
 async function main() {
-    const browser = await chromium.launch({ channel: process.env.TERMINAL_TEST_BROWSER || 'msedge' });
+    const executablePath = process.env.TERMINAL_TEST_BROWSER_PATH;
+    const browser = await chromium.launch(executablePath ? { executablePath } :
+        { channel: process.env.TERMINAL_TEST_BROWSER || 'msedge' });
     try {
         const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
         const errors = [];
@@ -20,13 +22,14 @@ async function main() {
             return route.fulfill({ path: file, contentType });
         });
         await page.addInitScript(() => {
-            const calls = window.calls = { starts: 0, sizes: [], input: [], copied: [], keyboard: 0, acks: 0, ubuntu: 0, back: 0, browser: 0, links: [] };
+            const calls = window.calls = { starts: 0, sizes: [], input: [], copied: [], keyboard: 0, acks: 0, ubuntu: 0, back: 0, browser: 0, links: [], transfers: 0 };
             window.Android = {
                 isUbuntuSession() { return window.name === 'ubuntu'; },
                 supportsUbuntu() { return true; },
                 openUbuntu() { calls.ubuntu++; },
                 closeUbuntu() { calls.back++; },
                 openBrowser() { calls.browser++; },
+                transferFiles() { calls.transfers++; },
                 openLink(url) { calls.links.push(url); },
                 start(cols, rows) {
                     calls.starts++;
@@ -44,6 +47,9 @@ async function main() {
         });
         await page.goto('https://terminal.local/index.html');
         await page.getByText('실행 중').waitFor({ timeout: 5000 });
+        await page.locator('#clipboard').click();
+        assert(await page.locator('#file-transfer').isHidden());
+        await page.locator('#clipboard').click();
         await page.getByRole('button', { name: '키보드' }).click();
         assert.equal(await page.evaluate(() => calls.keyboard), 1);
 
@@ -322,10 +328,14 @@ async function main() {
         await page.evaluate(() => shellStarted());
         await page.getByText('실행 중').waitFor();
         await page.getByText('Ubuntu 설치 중').waitFor({ state: 'hidden' });
+        await page.locator('#clipboard').click();
+        await page.getByRole('button', { name: 'Android 파일 전송' }).click();
+        assert.equal(await page.evaluate(() => calls.transfers), 1);
+        assert(await page.locator('#clipboard-menu').isHidden());
         await page.getByRole('button', { name: 'Android 셸로 돌아가기' }).click();
         assert.equal(await page.evaluate(() => calls.back), 1);
         assert.deepEqual(errors, []);
-        console.log('Passed IME language switching, terminal links, trackpad controls, resize, restart and Ubuntu install/return UI.');
+        console.log('Passed IME language switching, terminal links, trackpad controls, resize, restart, Ubuntu UI and file transfer menu.');
     } finally {
         await browser.close();
     }

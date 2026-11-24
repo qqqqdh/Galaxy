@@ -1,11 +1,12 @@
 # Galaxy Terminal과 Galaxy IDE
 
-갤럭시 탭에서 Ubuntu를 열고 코드를 편집·빌드할 수 있는 Android 터미널과 CLI 편집기입니다.
+갤럭시 탭에서 Ubuntu를 열고 코드를 편집·빌드할 수 있는 Android 터미널과 Ubuntu 개발 도구입니다.
 
 | 프로그램 | 다운로드 | 소스와 사용법 | 버전별 기록 |
 | --- | --- | --- | --- |
 | Galaxy Terminal (Android) | [0.4.14 APK](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.14) | [터미널 사용법과 빌드](terminal/) | [터미널 배포 기록](versions/terminal/) |
 | Galaxy IDE (Ubuntu ARM64) | [0.1.20 실행 파일](https://github.com/qqqqdh/Galaxy/releases/tag/ide-v0.1.20) | [IDE 사용법과 빌드](cli-ide/) | [IDE 변경 이력](cli-ide/CHANGELOG.md) |
+| Galaxy 파일·서버 관리자 (Ubuntu) | [소스 빌드](tools/#빌드와-설치) | [설치와 사용법](tools/) | |
 
 ## Galaxy Terminal 설치
 

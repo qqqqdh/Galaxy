@@ -32,7 +32,7 @@ try {
     Copy-Item "$xterm/addon-fit/LICENSE" "$cache/assets/addon-fit-LICENSE.txt"
     Copy-Item "$xterm/addon-web-links/LICENSE" "$cache/assets/addon-web-links-LICENSE.txt"
 
-    javac -encoding UTF-8 --release 8 -classpath $platform -d "$cache/classes" terminal/TerminalActivity.java terminal/EditorInput.java terminal/PtySession.java terminal/Ubuntu.java terminal/UbuntuSetup.java terminal/BrowserActivity.java terminal/WebAddress.java
+    javac -encoding UTF-8 --release 8 -classpath $platform -d "$cache/classes" terminal/TerminalActivity.java terminal/EditorInput.java terminal/PtySession.java terminal/Ubuntu.java terminal/UbuntuSetup.java terminal/BrowserActivity.java terminal/WebAddress.java terminal/FileTransfer.java
     & "$jdk/bin/jar.exe" cf "$cache/classes.jar" -C "$cache/classes" .
     & "$tools/d8.bat" --lib $platform --min-api 26 --output $cache "$cache/classes.jar"
 
@@ -51,7 +51,7 @@ try {
         '-Wl,-z,max-page-size=16384' terminal/ubuntu-session.c -o "$cache/lib/arm64-v8a/libgalaxy_session.so"
     & "$tools/aapt2.exe" compile --dir terminal/res -o "$cache/browser-res.zip"
     & "$tools/aapt2.exe" link -I $platform --manifest terminal/AndroidManifest.xml -A "$cache/assets" `
-        "$cache/browser-res.zip" -o "$cache/base.apk" --version-code 20 --version-name 0.4.14
+        "$cache/browser-res.zip" -o "$cache/base.apk" --version-code 21 --version-name 0.4.15
     Copy-Item -Force "$cache/base.apk" "$cache/packed.apk"
     $archive = [IO.Compression.ZipFile]::Open([IO.Path]::GetFullPath("$cache/packed.apk", $root), 'Update')
     try {

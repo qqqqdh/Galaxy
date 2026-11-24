@@ -103,7 +103,7 @@ final class Ubuntu {
     }
 
     private static PtySession.Command command(Context context, Path root, Path temporary, String user, String ids,
-            String computer, String locale, String... guestCommand) {
+            String computer, String locale, String... guestCommand) throws IOException {
         File libraries = new File(context.getApplicationInfo().nativeLibraryDir);
         Path hardlinks = root.resolve(".l2s");
         String home = user.equals("root") ? "/root" : "/home/" + user;
@@ -119,6 +119,7 @@ final class Ubuntu {
             "-b", temporary.resolve("galaxy-bashrc") + ":/etc/galaxy-bashrc!",
             "-b", temporary.resolve("galaxy-bin") + ":/run/galaxy-bin!",
             "-b", sessionHelper + ":/usr/libexec/galaxy-session!",
+            "-b", FileTransfer.directory(context) + ":/mnt/galaxy-transfer!",
             "-b", temporary.resolve("galaxy-ubuntu-setup.sh") + ":/etc/galaxy-ubuntu-setup.sh!",
             "/usr/bin/env", "-i", "HOME=" + home, "USER=" + user, "LOGNAME=" + user, "SHELL=/bin/bash",
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/run/galaxy-bin:/usr/bin:/sbin:/bin", "TMPDIR=/tmp",

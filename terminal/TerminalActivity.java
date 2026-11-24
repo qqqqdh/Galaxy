@@ -48,6 +48,7 @@ public class TerminalActivity extends Activity {
     private EditorInput editorInput;
     private int editorMode;
     private AlertDialog ubuntuSetup;
+    private FileTransfer fileTransfer;
     private volatile PtySession session;
     private final ArrayDeque<CountDownLatch> outputAcks = new ArrayDeque<>();
 
@@ -55,6 +56,9 @@ public class TerminalActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        if (isUbuntu()) {
+            fileTransfer = new FileTransfer(this, text -> evaluate("notice(" + JSONObject.quote(text) + ")"), state);
+        }
         FrameLayout layout = new FrameLayout(this);
         layout.setBackgroundColor(BACKGROUND);
         browser = new WebView(this) {
@@ -111,6 +115,16 @@ public class TerminalActivity extends Activity {
         }
         setContentView(layout);
         browser.loadUrl(ORIGIN + "index.html");
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        if (fileTransfer != null) fileTransfer.save(state);
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (fileTransfer != null) fileTransfer.result(request, result, data);
     }
 
     private WebResourceResponse asset(WebResourceRequest request) {
@@ -247,6 +261,14 @@ public class TerminalActivity extends Activity {
         @JavascriptInterface public boolean isUbuntuSession() { return isUbuntu(); }
 
         @JavascriptInterface public boolean supportsUbuntu() { return Ubuntu.supported(TerminalActivity.this); }
+
+        @JavascriptInterface public void transferFiles() {
+            runOnUiThread(() -> {
+                if (browser != null && fileTransfer != null && Ubuntu.configured(TerminalActivity.this)) {
+                    fileTransfer.show();
+                }
+            });
+        }
 
         @JavascriptInterface public void openUbuntu() {
             if (!isUbuntu() && supportsUbuntu()) runOnUiThread(() -> {

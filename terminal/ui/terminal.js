@@ -68,6 +68,14 @@ if (Android.isUbuntuSession()) {
   document.querySelector('h1').textContent = 'Ubuntu 24.04';
   back.hidden = false;
   back.addEventListener('click', () => Android.closeUbuntu());
+  const transfer = document.getElementById('file-transfer');
+  if (typeof Android.transferFiles === 'function') {
+    transfer.hidden = false;
+    transfer.addEventListener('click', () => {
+      closeMenu();
+      Android.transferFiles();
+    });
+  }
 } else if (Android.supportsUbuntu()) {
   ubuntu.hidden = false;
   ubuntu.addEventListener('click', () => Android.openUbuntu());

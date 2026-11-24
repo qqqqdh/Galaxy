@@ -32,6 +32,12 @@ Galaxy IDE 0.1.1부터 물리 키보드로 입력하면 편집 본문에서 `ㅎ
 
 Ubuntu 셸과 Galaxy IDE 하단 터미널은 별도의 TTY로 로그인 목록에 표시됩니다. `who` 또는 `w`로 확인하며, 셸에서 `exit`하거나 Ubuntu 창을 닫으면 해당 세션은 목록에서 빠집니다. Ubuntu 24.04의 procps-ng 4.0.4에서는 로컬 세션을 표시할 때 오류가 나는 원격 호스트(FROM) 열을 생략합니다.
 
+## 파일과 개발 서버
+
+Ubuntu에서 `galaxy-files`로 파일을 정리하고 `galaxy-servers`로 프로젝트별 개발 서버를 시작하거나 중지할 수 있습니다. [Galaxy Ubuntu 도구](../tools/)에서 빌드와 설치 방법을 확인하세요.
+
+Android 파일 전송 기능이 포함된 APK에서는 Ubuntu 상단 **⋯ → Android 파일 전송**으로 파일을 가져오거나 저장할 수 있습니다. 받은 파일과 Android로 보낼 파일은 Ubuntu의 `/mnt/galaxy-transfer`에 둡니다.
+
 ## 내장 브라우저
 
 터미널 상단의 **브라우저**를 눌러 웹 주소나 검색어를 입력합니다. 검색어는 Google 검색으로 열립니다. 일반 사이트는 HTTPS로 열리고, 기기에서 실행 중인 서버는 `http://127.0.0.1:8080` 또는 `localhost:8080`처럼 입력할 수 있습니다. 서버가 다른 포트를 사용한다면 주소의 포트를 바꾸세요. 브라우저에서 **터미널**을 누르면 실행 중이던 셸로 돌아갑니다.
@@ -59,3 +65,17 @@ npm --prefix terminal ci --ignore-scripts
 빌드 결과는 `dist/Galaxy-Terminal.apk`입니다. 최초 빌드는 SHA-256으로 고정된 PRoot 실행기와 소스를 GitHub에서 받아 APK에 포함합니다. 업데이트 설치가 필요하면 `.build-cache/terminal/terminal-dev.jks`를 보관하세요. `node terminal/smoke.cjs`로 화면과 키 입력을 검사할 수 있습니다. 기존 Galaxy Code의 Playwright 캐시와 Microsoft Edge를 사용합니다.
 
 Edge 대신 Chrome으로 검사하려면 `$env:TERMINAL_TEST_BROWSER = 'chrome'`을 설정한 뒤 같은 검사 명령을 실행합니다.
+
+## Linux 프리뷰 빌드
+
+JDK, Node.js, Android SDK와 NDK를 준비한 뒤 저장소 루트에서 실행합니다.
+
+```bash
+sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
+npm --prefix terminal ci --ignore-scripts
+GALAXY_PREVIEW=1 GALAXY_TERMINAL_VERSION=0.4.15-preview.1 bash terminal/build.sh
+```
+
+결과는 `dist/Galaxy-Terminal-Preview.apk`입니다. 프리뷰는 별도 앱으로 설치되고 기존 Galaxy Terminal의 Ubuntu 데이터와 저장공간을 공유하지 않습니다. 같은 프리뷰에 업데이트하려면 빌드 시 사용한 `.build-cache/terminal/terminal-preview.jks`를 보관하세요. 기존 Galaxy Terminal 업데이트용 APK를 빌드하려면 `GALAXY_PREVIEW`를 생략하고 기존 서명 키 경로, 비밀번호와 별칭을 각각 `GALAXY_SIGNING_KEYSTORE`, `GALAXY_SIGNING_PASSWORD`, `GALAXY_SIGNING_ALIAS`로 설정합니다.
+
+Linux의 설치된 Chromium으로 웹 터미널을 검사하려면 기존 Playwright 의존성을 준비한 뒤 `TERMINAL_TEST_BROWSER_PATH=/usr/bin/chromium node terminal/smoke.cjs`를 실행하세요.
