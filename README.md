@@ -11,7 +11,9 @@
 
 ## main에 반영된 변경 사항
 
-위 표의 다운로드는 공개 릴리스 기준입니다. 아래 내용은 현재 `main` 소스에 반영된 수정입니다.
+위 표는 정식 릴리스 다운로드입니다. 공개 프리뷰는 [Galaxy Terminal 0.4.15-preview.2](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.15-preview.2)입니다.
+
+현재 `main`의 Galaxy Terminal APK 빌드 버전은 **0.4.15**입니다. Galaxy IDE와 파일 관리자는 `main` 빌드에서도 각각 **0.1.20**, **0.1.0**으로 표시됩니다. 아래 수정 사항의 포함 여부는 빌드에 사용한 커밋을 기준으로 확인할 수 있습니다.
 
 - Galaxy Terminal에서 `cat` 같은 프로그램을 실행 중에도 조합 중인 한글을 입력 줄에 표시하고 커서를 글자 뒤에 둡니다. 화면 방향키는 한글을 확정한 뒤 전송합니다.
 - Galaxy IDE에서 자동완성 후보를 클릭하거나 터치해 적용할 수 있습니다. Claude 로그인 URL과 다음 줄의 안내 문구를 구분하고, AI 전환과 긴 붙여넣기 처리도 수정했습니다.
