@@ -4,7 +4,7 @@
 
 ## 설치와 사용
 
-1. [Galaxy Terminal 0.4.14 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.14)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
+1. [Galaxy Terminal 0.4.15 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.15)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
 2. Galaxy Terminal을 열고 물리 키보드를 사용하거나, 상단 **키보드**를 눌러 한국어가 설정된 Android 키보드를 엽니다.
 3. `echo '한글 입력 확인'`을 입력합니다. `pwd`로 현재 디렉터리, `stty size`로 터미널 크기를 확인할 수 있습니다.
 
@@ -36,7 +36,7 @@ Ubuntu 셸과 Galaxy IDE 하단 터미널은 별도의 TTY로 로그인 목록�
 
 Ubuntu에서는 [Galaxy 파일 관리자](../file-manager/)와 [Galaxy 서버 실행 관리자](../server-manager/)를 각각 설치할 수 있습니다. `galaxy-files`로 파일을 정리하고 `galaxy-servers`로 프로젝트별 개발 서버를 시작하거나 중지할 수 있습니다.
 
-Android 파일 전송 기능이 포함된 APK에서는 Ubuntu 상단 **⋯ → Android 파일 전송**으로 파일을 가져오거나 저장할 수 있습니다. 받은 파일과 Android로 보낼 파일은 Ubuntu의 `/mnt/galaxy-transfer`에 둡니다.
+Galaxy Terminal 0.4.15 이상에서는 Ubuntu 상단 **⋯ → Android 파일 전송**으로 파일을 가져오거나 저장할 수 있습니다. 받은 파일과 Android로 보낼 파일은 Ubuntu의 `/mnt/galaxy-transfer`에 둡니다.
 
 ## 내장 브라우저
 

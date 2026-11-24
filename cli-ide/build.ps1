@@ -17,7 +17,7 @@ try {
         $env:GOARCH = 'arm64'
         $env:CGO_ENABLED = '0'
         $output = Join-Path $root 'dist/galaxy-ide-linux-arm64'
-        go build -trimpath -ldflags '-s -w' -o $output .
+        go build -trimpath -buildvcs=false -ldflags '-s -w' -o $output .
         Copy-Item -LiteralPath 'THIRD_PARTY_LICENSES.txt' -Destination (Join-Path $root 'dist/galaxy-ide-LICENSES.txt')
         Get-FileHash -LiteralPath $output -Algorithm SHA256
     } finally {

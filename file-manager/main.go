@@ -13,7 +13,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-const version = "0.1.0"
+const version = "0.1.1"
 
 type fileManager struct {
 	*ui.Screen

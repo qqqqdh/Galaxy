@@ -4,7 +4,7 @@ Galaxy Terminal의 Ubuntu 셸에서 파일과 폴더를 터치나 키보드로 �
 
 ## 설치
 
-[0.1.0 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/file-manager-v0.1.0)에서 갤럭시 탭용 `galaxy-files-linux-arm64`를 받으세요. Linux x86-64에서는 `galaxy-files-linux-amd64`를 받습니다.
+[0.1.1 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/file-manager-v0.1.1)에서 갤럭시 탭용 `galaxy-files-linux-arm64`를 받으세요. Linux x86-64에서는 `galaxy-files-linux-amd64`를 받습니다.
 
 ```bash
 mkdir -p ~/.local/bin
@@ -18,7 +18,7 @@ Ubuntu 셸에서 명령을 찾지 못하면 `export PATH="$HOME/.local/bin:$PATH
 
 ## 사용법
 
-파일이나 폴더를 터치하거나 선택 후 Enter를 눌러 작업 목록을 엽니다. 복사 또는 이동을 선택한 뒤 대상 폴더에서 **여기에 붙여넣기**를 누르세요. 이름 변경, 새 폴더, 숨김 파일 표시, 영구 삭제도 **작업**에서 선택합니다. ZIP, TAR.GZ, TGZ는 새 폴더에 풀며 같은 이름의 기존 항목은 덮어쓰지 않습니다. 압축 파일 안의 링크와 특수 파일은 지원하지 않습니다.
+파일이나 폴더를 터치하거나 선택 후 Enter를 눌러 작업 목록을 엽니다. 복사 또는 이동을 선택한 뒤 대상 폴더에서 **여기에 붙여넣기**를 누르세요. 이름 변경, 새 폴더, 숨김 파일 표시, 영구 삭제도 **작업**에서 선택합니다. ZIP, TAR.GZ, TGZ는 새 폴더에 풀며 같은 이름의 기존 항목은 덮어쓰지 않습니다. GitHub 소스 TAR.GZ의 PAX 전역 헤더를 건너뜁니다. 압축 파일 안의 링크와 특수 파일은 지원하지 않습니다.
 
 - **F2**로 선택한 폴더를 열고 **Backspace**로 상위 폴더로 이동합니다.
 - **Ctrl+C**로 복사할 항목을 선택하고 **Ctrl+V**로 붙여넣습니다. **F5**로 목록을 갱신합니다.
