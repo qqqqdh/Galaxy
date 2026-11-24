@@ -52,7 +52,25 @@ func (v *syntaxView) invalidate() {
 	v.spans = nil
 }
 
+type editorScreen struct {
+	tcell.Screen
+	left, right int
+}
+
+func (s editorScreen) SetContent(x, y int, r rune, combining []rune, style tcell.Style) {
+	if x < s.left || x >= s.right {
+		return
+	}
+	if x == s.right-1 && uniseg.StringWidth(string(r)+string(combining)) > 1 {
+		r, combining = ' ', nil
+	}
+	s.Screen.SetContent(x, y, r, combining, style)
+}
+
 func (v *syntaxView) Draw(screen tcell.Screen) {
+	left, _, width, _ := v.GetRect()
+	// A selected tab can start left of the visible columns in tview's TextArea.
+	screen = editorScreen{Screen: screen, left: left, right: left + width}
 	v.TextArea.Draw(screen)
 	// A newly opened target needs its line layout before byte offsets map to screen rows.
 	if r := v.definitionSelection; r != nil {

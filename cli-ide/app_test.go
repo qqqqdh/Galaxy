@@ -173,6 +173,53 @@ func TestCompletionPopupFollowsCursor(t *testing.T) {
 	}
 }
 
+func TestCompletionAcceptsMouseClick(t *testing.T) {
+	i := newIDE(t.TempDir(), config{IndentSize: 4})
+	i.newFile()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	i.app.SetScreen(screen)
+	screen.SetSize(100, 28)
+	done := make(chan error, 1)
+	go func() { done <- i.app.Run() }()
+	t.Cleanup(func() {
+		i.app.Stop()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Error("IDE failed to stop")
+		}
+	})
+
+	selected := make(chan int, 1)
+	i.app.QueueUpdateDraw(func() {
+		i.acceptHint = func(index int) {
+			i.clearHints()
+			if !i.active.editor.HasFocus() {
+				t.Error("editor lost focus while applying the completion")
+			}
+			selected <- index
+		}
+		i.hints.AddItem("Print", "", 0, nil).AddItem("Printf", "", 0, func() { i.acceptHint(1) })
+	})
+	var x, y int
+	i.app.QueueUpdate(func() {
+		x, y, _, _ = i.hints.GetInnerRect()
+	})
+	screen.InjectMouse(x, y+1, tcell.Button1, tcell.ModNone)
+	screen.InjectMouse(x, y+1, tcell.ButtonNone, tcell.ModNone)
+	select {
+	case index := <-selected:
+		if index != 1 {
+			t.Fatalf("applied candidate %d, want 1", index)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("press and release did not apply a completion")
+	}
+}
+
 func TestAssistantKeepsCodeVisible(t *testing.T) {
 	i := newIDE(t.TempDir(), config{IndentSize: 4})
 	i.newFile()
@@ -267,6 +314,33 @@ func TestHorizontalScrollKeepsCaretAndSelection(t *testing.T) {
 		mouse(tview.MouseLeftDown, x+width-1, y, tcell.ModNone)
 	}
 	check(59) // Four tab cells, four Hangul cells, 90 ASCII cells, and room for the end caret.
+}
+
+func TestSelectedTabStaysInsideEditor(t *testing.T) {
+	i := newIDE(t.TempDir(), config{IndentSize: 4})
+	i.newFile()
+	editor := i.active.syntax
+	editor.SetRect(20, 2, 50, 6)
+	editor.SetText("\t"+strings.Repeat("x", 70), false)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 12)
+	editor.Draw(screen)
+	editor.Select(0, 15)
+	editor.SetOffset(0, 10)
+	x, y, _, _ := editor.GetInnerRect()
+	for col := x - 10; col < 20; col++ {
+		screen.SetContent(col, y, '!', nil, tcell.StyleDefault)
+	}
+	editor.Draw(screen)
+	for col := x - 10; col < 20; col++ {
+		if r, _, _, _ := screen.GetContent(col, y); r != '!' {
+			t.Fatalf("selected tab overwrote adjacent cell %d: %q", col, r)
+		}
+	}
 }
 
 func TestEditorWorkflow(t *testing.T) {

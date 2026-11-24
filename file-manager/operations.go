@@ -124,15 +124,19 @@ func extractArchive(source, dest string) error {
 		return err
 	}
 	defer os.RemoveAll(stage)
+	root := filepath.Join(stage, "contents")
+	if err := os.Mkdir(root, 0755); err != nil {
+		return err
+	}
 	if strings.HasSuffix(strings.ToLower(source), ".zip") {
-		err = extractZip(source, stage)
+		err = extractZip(source, root)
 	} else {
-		err = extractTar(source, stage)
+		err = extractTar(source, root)
 	}
 	if err != nil {
 		return err
 	}
-	return renameNew(stage, dest)
+	return renameNew(root, dest)
 }
 
 func putArchiveEntry(root, name string, mode fs.FileMode, input io.Reader) error {
@@ -197,6 +201,9 @@ func extractTar(source, root string) error {
 		}
 		if err != nil {
 			return err
+		}
+		if item.Typeflag == tar.TypeXGlobalHeader {
+			continue
 		}
 		if item.Typeflag != tar.TypeDir && item.Typeflag != tar.TypeReg && item.Typeflag != tar.TypeRegA {
 			return fmt.Errorf("압축 파일에 링크 또는 특수 파일이 있습니다: %q", item.Name)

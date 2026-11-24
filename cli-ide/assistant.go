@@ -5,7 +5,7 @@ import "github.com/rivo/tview"
 const assistantSplitWidth = 106
 
 func (i *ide) makeAssistantPanel() *tview.Flex {
-	i.assistant = &shellPane{Box: tview.NewBox(), app: i.app}
+	i.assistant = &shellPane{Box: tview.NewBox(), app: i.app, notify: i.notify}
 	i.assistantTitle = tview.NewTextView().SetTextColor(accent)
 	i.assistantTitle.SetBackgroundColor(panel)
 	bar := tview.NewFlex().AddItem(i.assistantTitle, 0, 1, false).

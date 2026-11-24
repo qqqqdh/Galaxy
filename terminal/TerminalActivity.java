@@ -100,6 +100,7 @@ public class TerminalActivity extends Activity {
             @Override public void preview(String text) {
                 evaluate("nativeTerminalDraft(" + JSONObject.quote(text) + ")");
             }
+            @Override public void enter() { evaluate("sendTerminalKey('Enter')"); }
             @Override public boolean terminalKey(KeyEvent event) {
                 return browser != null && browser.dispatchKeyEvent(event);
             }
@@ -258,6 +259,13 @@ public class TerminalActivity extends Activity {
         @JavascriptInterface public void resetEditorContext() {
             runOnUiThread(() -> { if (editorMode >= 2) editorInput.finishContext(); });
         }
+        @JavascriptInterface public void sendEditorKey(String key) {
+            runOnUiThread(() -> {
+                if (editorMode >= 2) editorInput.finishContext();
+                evaluate("sendTerminalKey(" + JSONObject.quote(key) + ")");
+            });
+        }
+
         @JavascriptInterface public boolean isUbuntuSession() { return isUbuntu(); }
 
         @JavascriptInterface public boolean supportsUbuntu() { return Ubuntu.supported(TerminalActivity.this); }

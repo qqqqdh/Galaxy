@@ -295,6 +295,32 @@ async function main() {
         await clickLink(5, 0);
         assert.equal(await page.evaluate(() => calls.links.at(-1)), 'http://localhost:8080/test');
 
+        await page.evaluate(() => {
+            calls.input.length = 0;
+            Android.sendEditorKey = key => {
+                // The Android UI thread finishes composition first, then posts the key.
+                setTimeout(() => {
+                    nativeEditorEdit('', '한');
+                    nativeTerminalDraft('');
+                    sendTerminalKey(key);
+                }, 100);
+            };
+        });
+        for (const text of ['ㅎ', '하', '한']) {
+            await page.evaluate(draft => nativeTerminalDraft(draft), text);
+            assert.equal(await page.locator('.ide-draft:visible').innerText(), text);
+        }
+        assert.equal(await page.locator('.ide-draft').evaluate(node =>
+            getComputedStyle(node).textDecorationLine), 'none', 'Native preedit should match terminal text');
+        await page.evaluate(() => {
+            document.querySelector('[data-key="ArrowLeft"]').click();
+            if (calls.input.length) throw new Error('The screen key bypassed the Android input thread');
+        });
+        await page.waitForFunction(() => calls.input.length === 2);
+        assert.deepEqual(await page.evaluate(() => calls.input), ['한', '\x1b[D']);
+        assert(await page.locator('.ide-draft').isHidden());
+        await page.evaluate(() => { delete Android.sendEditorKey; });
+
         const lines = Array.from({ length: 100 }, (_, i) => `\r\n줄 ${i}`).join('');
         await page.evaluate(data => receiveOutput(data), Buffer.from(lines).toString('base64'));
         await page.waitForFunction(() => calls.acks === 3 && term.buffer.active.baseY > 0);

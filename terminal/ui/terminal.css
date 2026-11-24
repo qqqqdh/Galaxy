@@ -46,7 +46,13 @@ main { flex: 1; min-height: 0; min-width: 0; padding: 10px 8px 4px 12px; overflo
   white-space: pre;
   background: #101319;
   color: #edf1f8;
-  text-decoration: underline;
+}
+.ide-draft::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 100%;
+  width: 1px;
+  background: var(--accent);
 }
 nav { border-top: 1px solid var(--border); overflow-x: auto; }
 nav button { flex: none; font-family: monospace; }

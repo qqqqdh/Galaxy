@@ -32,3 +32,18 @@ func TestClaudeAuthorizationUsesEntireWrappedLink(t *testing.T) {
 		t.Fatal("incomplete authorization address was accepted")
 	}
 }
+
+func TestClaudeAuthorizationStopsBeforeInstructions(t *testing.T) {
+	const width, height = 180, 5
+	for _, padding := range []int{0, 1} {
+		prefix := "https://claude.com/cai/oauth/authorize?client_id=test&redirect_uri=https%3A%2F%2Fexample.com&response_type=code&code_challenge="
+		address := prefix + strings.Repeat("x", width-padding-len(prefix)-len("&state=abc")) + "&state=abc"
+		em := vt.NewEmulator(width, height)
+		_, _ = em.WriteString(address + "\r\nPress Enter after signing in.\r\n")
+		link := findClaudeAuthorization(width, height, em.CellAt)
+		_ = em.Close()
+		if link.url != address || link.contains(0, 1) {
+			t.Fatalf("padding %d: link included the instructions: %+v", padding, link)
+		}
+	}
+}

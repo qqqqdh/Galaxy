@@ -46,8 +46,8 @@ func findClaudeAuthorization(width, height int, cellAt func(int, int) *uv.Cell) 
 		endRow, endCol := row, start+len(first)
 		// Claude Code hard-wraps the URL at the pane edge before writing it to the PTY.
 		for endCol >= width-1 && endRow+1 < height {
-			next, _, _ := strings.Cut(lineAt(endRow+1), " ")
-			if next == "" {
+			next := strings.TrimRight(lineAt(endRow+1), " ")
+			if next == "" || strings.ContainsRune(next, ' ') || strings.HasPrefix(next, "https://") {
 				break
 			}
 			endRow, endCol = endRow+1, len(next)

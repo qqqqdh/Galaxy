@@ -55,7 +55,6 @@ let running = false;
 let atPrompt = false;
 let liveEditor = false;
 let nativeTerminal = false;
-let nativeDraft = '';
 let inGalaxyIDE = false;
 let liveRange = { text: '' };
 let composing;
@@ -184,6 +183,7 @@ function resetLiveRange() {
 function updateInputMode() {
   const mode = !running ? 0 : liveEditor ? 2 : inGalaxyIDE ? 1 : (!atPrompt || inEditorScreen()) ? 3 : 0;
   if (mode === 3 && !nativeTerminal) term.focus();
+  if (nativeTerminal && mode !== 3) showDraft('');
   nativeTerminal = mode === 3;
   Android.editorMode?.(mode);
 }
@@ -216,11 +216,14 @@ function nativeEditorEdit(erased, inserted) {
   term.input('\x7f'.repeat(before.length - shared) + text);
 }
 
-function nativeTerminalDraft(text) {
-  nativeDraft = nativeTerminal ? text : '';
-  draftView.textContent = nativeDraft;
-  draftView.hidden = !nativeDraft;
+function showDraft(text) {
+  draftView.textContent = text;
+  draftView.hidden = !text;
   positionDraft();
+}
+
+function nativeTerminalDraft(text) {
+  if (nativeTerminal) showDraft(text);
 }
 
 function editorEscape() {
@@ -240,13 +243,21 @@ function syncLiveRange() {
 }
 
 function positionDraft() {
-  if (!composing?.preview && !nativeDraft) return;
+  if (draftView.hidden) return;
   const cursor = term.buffer.active;
-  draftView.style.left = Math.min(cursor.cursorX, term.cols - 1) * 100 / term.cols + '%';
-  draftView.style.top = cursor.cursorY * 100 / term.rows + '%';
+  let row = cursor.baseY + cursor.cursorY - cursor.viewportY;
+  let column = cursor.cursorX;
+  if (column >= term.cols && row < term.rows - 1) {
+    column = 0;
+    row++;
+  }
+  draftView.style.visibility = row >= 0 && row < term.rows ? 'visible' : 'hidden';
+  draftView.style.left = Math.min(column, term.cols - 1) * 100 / term.cols + '%';
+  draftView.style.top = row * 100 / term.rows + '%';
   draftView.style.height = 100 / term.rows + '%';
 }
 term.onRender(positionDraft);
+term.onScroll(positionDraft);
 
 function finishComposition(clearInput) {
   if (!settling) return;
@@ -284,9 +295,7 @@ host.addEventListener('compositionupdate', event => {
   if (/[\x00-\x1f\x7f]/.test(event.data)) return;
   if (composing.preview) {
     composing.text = event.data;
-    draftView.textContent = event.data;
-    draftView.hidden = !event.data;
-    positionDraft();
+    showDraft(event.data);
   } else {
     replaceDraft(composing, event.data);
   }
@@ -302,7 +311,7 @@ host.addEventListener('compositionend', event => {
   if (composing.editor) {
     const finalText = event.data || '';
     if (composing.preview) {
-      draftView.hidden = true;
+      showDraft('');
       if (finalText) term.input(finalText);
     } else {
       replaceDraft(composing, finalText);
@@ -463,6 +472,16 @@ restart.addEventListener('click', () => {
   openShell();
   term.focus();
 });
+function sendTerminalKey(key) {
+  if (!running) return;
+  if (key === 'Escape') term.input('\x1b');
+  else if (key === 'Tab') term.input('\t');
+  else if (key === 'Enter') term.input('\r');
+  else if (Object.hasOwn(cursorKeys, key)) {
+    term.input(`\x1b${term.modes.applicationCursorKeysMode ? 'O' : '['}${cursorKeys[key]}`);
+  }
+}
+
 document.getElementById('keys').addEventListener('pointerdown', event => {
   if (event.target instanceof HTMLButtonElement) event.preventDefault();
 });
@@ -473,11 +492,9 @@ document.getElementById('keys').addEventListener('click', event => {
   if (key) {
     if (key === 'Escape' && inGalaxyIDE) return editorEscape();
     if (composing) return;
-    if (liveEditor || nativeTerminal) Android.resetEditorContext?.();
     finishComposition(true);
-    if (key === 'Escape') term.input('\x1b');
-    else if (key === 'Tab') term.input('\t');
-    else term.input(`\x1b${term.modes.applicationCursorKeysMode ? 'O' : '['}${cursorKeys[key]}`);
+    if ((liveEditor || nativeTerminal) && Android.sendEditorKey) Android.sendEditorKey(key);
+    else sendTerminalKey(key);
   } else {
     control.setAttribute('aria-pressed', String(control.getAttribute('aria-pressed') !== 'true'));
   }

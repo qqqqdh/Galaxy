@@ -16,6 +16,7 @@ final class EditorInput extends EditText {
     interface Listener {
         void edit(String erased, String inserted);
         void preview(String text);
+        void enter();
         boolean terminalKey(KeyEvent event);
     }
 
@@ -142,6 +143,14 @@ final class EditorInput extends EditText {
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         int key = event.getKeyCode();
+        if (commitOnly && event.hasNoModifiers() &&
+                (key == KeyEvent.KEYCODE_ENTER || key == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                finishContext();
+                listener.enter();
+            }
+            return true;
+        }
         boolean command = event.isCtrlPressed() || event.isAltPressed() || event.isMetaPressed() ||
                 (key >= KeyEvent.KEYCODE_DPAD_UP && key <= KeyEvent.KEYCODE_DPAD_RIGHT) ||
                 key == KeyEvent.KEYCODE_MOVE_HOME || key == KeyEvent.KEYCODE_MOVE_END ||

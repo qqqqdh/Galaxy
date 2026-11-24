@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -219,6 +220,7 @@ func terminateChildren(pid int, timer *time.Timer) {
 }
 
 type rollingLog struct {
+	mu   sync.Mutex
 	path string
 	file *os.File
 	size int
@@ -239,6 +241,8 @@ func (l *rollingLog) close() {
 }
 
 func (l *rollingLog) Write(data []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	written := 0
 	for len(data) != 0 {
 		if l.size == logLimit {

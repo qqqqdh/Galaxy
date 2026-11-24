@@ -59,7 +59,8 @@ func (i *ide) drawHints(screen tcell.Screen) {
 }
 
 func (i *ide) hintMouse(event *tcell.EventMouse, action tview.MouseAction) (*tcell.EventMouse, tview.MouseAction) {
-	if i.acceptHint == nil || !i.hints.InRect(event.Position()) || action == tview.MouseMove {
+	// tview needs the release event to synthesize the click.
+	if i.acceptHint == nil || !i.hints.InRect(event.Position()) || action == tview.MouseMove || action == tview.MouseLeftUp {
 		return event, action
 	}
 	switch action {

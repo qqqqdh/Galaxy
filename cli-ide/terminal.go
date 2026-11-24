@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"image/color"
 	"io"
@@ -14,11 +15,16 @@ import (
 	"github.com/rivo/tview"
 )
 
+const terminalInputChunk = 32 * 1024
+
 type shellPane struct {
 	*tview.Box
 	app     *tview.Application
 	term    *vt.Emulator
 	file    *os.File
+	process *os.Process
+	input   chan []byte
+	notify  func(string)
 	message string
 	scroll  int
 	claude  bool
@@ -47,7 +53,12 @@ func (s *shellPane) run(dir string, job task, onExit func(error)) {
 	em := vt.NewEmulator(w, h)
 	s.term, s.file, s.message = em, file, ""
 	s.claude = args[0] == "claude"
-	go func() { _, _ = io.Copy(file, em) }()
+	s.process = cmd.Process
+	s.input = make(chan []byte, 128)
+	go relayTerminalInput(file, em, s.input, func() {
+		_ = cmd.Process.Kill()
+		_ = file.Close()
+	})
 	go func() {
 		buf := make([]byte, 8192)
 		for {
@@ -67,11 +78,12 @@ func (s *shellPane) run(dir string, job task, onExit func(error)) {
 		s.app.QueueUpdateDraw(func() {
 			if s.file == file {
 				if onExit != nil {
-					_ = s.file.Close()
+					go file.Close()
 					_ = em.Close()
-					s.file = nil
+					s.file, s.process, s.input = nil, nil, nil
 					onExit(err)
 				} else {
+					s.process = nil // Wait already reaped the process.
 					s.close()
 					s.message = "셸 종료 · 터미널 탭을 누르면 다시 엽니다"
 				}
@@ -81,9 +93,12 @@ func (s *shellPane) run(dir string, job task, onExit func(error)) {
 }
 
 func (s *shellPane) close() {
-	if s.file != nil {
-		_ = s.file.Close()
-		s.file = nil
+	if file, process := s.file, s.process; file != nil {
+		s.file, s.process, s.input = nil, nil, nil
+		if process != nil {
+			_ = process.Kill()
+		}
+		go file.Close()
 	}
 	if s.term != nil {
 		_ = s.term.Close()
@@ -91,6 +106,34 @@ func (s *shellPane) close() {
 	}
 	s.scroll = 0
 	s.claude = false
+}
+
+// Drain the emulator's synchronous input pipe even when a child stops reading the PTY.
+func relayTerminalInput(file io.Writer, term io.Reader, pending chan []byte, stop func()) {
+	go func() {
+		for input := range pending {
+			if _, err := file.Write(input); err != nil {
+				return
+			}
+		}
+	}()
+	defer close(pending)
+	buffer := make([]byte, terminalInputChunk)
+	full := false
+	for {
+		n, err := term.Read(buffer)
+		if n > 0 && !full {
+			select {
+			case pending <- bytes.Clone(buffer[:n]):
+			default:
+				full = true
+				go stop()
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
 }
 
 func termColor(c color.Color, fallback tcell.Color) tcell.Color {
@@ -137,7 +180,7 @@ func (s *shellPane) Draw(screen tcell.Screen) {
 	for row := 0; row < h; row++ {
 		for col := 0; col < w; col++ {
 			cell := cellAt(col, row)
-			if cell == nil || cell.Width == 0 {
+			if cell == nil || cell.Width == 0 || cell.Width > w-col {
 				continue
 			}
 			r := []rune(cell.Content)
@@ -233,16 +276,22 @@ func (s *shellPane) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, fu
 
 func (s *shellPane) PasteHandler() func(string, func(tview.Primitive)) {
 	return s.WrapPasteHandler(func(text string, _ func(tview.Primitive)) {
-		if s.file != nil {
-			s.scroll = 0
-			s.term.Paste(text)
+		if s.file == nil {
+			return
 		}
+		// Leave room for the bracketed-paste markers and a preceding input chunk.
+		if len(text)/terminalInputChunk+4 > cap(s.input)-len(s.input) {
+			s.notify("터미널 입력이 많습니다 · 붙여넣을 내용을 나눠 주세요")
+			return
+		}
+		s.scroll = 0
+		s.term.Paste(text)
 	})
 }
 
 func (i *ide) makeDock() *tview.Flex {
 	i.problemList = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)
-	i.shell = &shellPane{Box: tview.NewBox(), app: i.app}
+	i.shell = &shellPane{Box: tview.NewBox(), app: i.app, notify: i.notify}
 	i.dock = tview.NewPages().AddPage("문제", i.problemList, true, true).AddPage("터미널", i.shell, true, false)
 	i.dock.AddPage("검색", i.makeSearchPane(), true, false)
 	i.changeList = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)
