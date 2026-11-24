@@ -19,7 +19,10 @@ jobs:
           go-version-file: tools/go.mod
           cache-dependency-path: tools/go.sum
       - name: Install Android SDK packages
-        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
+        run: |
+          export ANDROID_SDK_ROOT="$RUNNER_TEMP/galaxy-android-sdk"
+          bash terminal/setup-android-sdk.sh
+          printf 'ANDROID_SDK_ROOT=%s\n' "$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
       - name: Build and verify Android preview
         env:
           GALAXY_PREVIEW: '1'

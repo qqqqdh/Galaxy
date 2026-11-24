@@ -73,9 +73,11 @@ JDK, Node.js, Android SDK와 NDK를 준비한 뒤 저장소 루트에서 실행�
 ```bash
 sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
 npm --prefix terminal ci --ignore-scripts
-GALAXY_PREVIEW=1 GALAXY_TERMINAL_VERSION=0.4.15-preview.1 bash terminal/build.sh
+GALAXY_PREVIEW=1 GALAXY_TERMINAL_VERSION=0.4.15-preview.2 bash terminal/build.sh
 ```
 
 결과는 `dist/Galaxy-Terminal-Preview.apk`입니다. 프리뷰는 별도 앱으로 설치되고 기존 Galaxy Terminal의 Ubuntu 데이터와 저장공간을 공유하지 않습니다. 같은 프리뷰에 업데이트하려면 빌드 시 사용한 `.build-cache/terminal/terminal-preview.jks`를 보관하세요. 기존 Galaxy Terminal 업데이트용 APK를 빌드하려면 `GALAXY_PREVIEW`를 생략하고 기존 서명 키 경로, 비밀번호와 별칭을 각각 `GALAXY_SIGNING_KEYSTORE`, `GALAXY_SIGNING_PASSWORD`, `GALAXY_SIGNING_ALIAS`로 설정합니다.
+
+Linux x86-64에 SDK Manager가 없다면 `bash terminal/setup-android-sdk.sh`가 같은 SDK 패키지를 설치합니다. GitHub 프리뷰에서 같은 서명을 재사용하려면 Actions 비밀 값 `GALAXY_PREVIEW_KEYSTORE_BASE64`와 `GALAXY_PREVIEW_SIGNING_PASSWORD`를 설정합니다. 프리뷰 서명 키 별칭은 `terminal-preview`입니다.
 
 Linux의 설치된 Chromium으로 웹 터미널을 검사하려면 기존 Playwright 의존성을 준비한 뒤 `TERMINAL_TEST_BROWSER_PATH=/usr/bin/chromium node terminal/smoke.cjs`를 실행하세요.
