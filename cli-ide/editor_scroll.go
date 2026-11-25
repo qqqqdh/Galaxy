@@ -109,6 +109,13 @@ func (v *syntaxView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, f
 			}
 			return true, nil
 		}
-		return editor(action, e, focus)
+		if source := v.sourceColumn(col, row); source != col {
+			e = tcell.NewEventMouse(source, row, e.Buttons(), e.Modifiers())
+		}
+		consumed, capture := editor(action, e, focus)
+		if capture == v.TextArea && len(v.swatches) != 0 {
+			capture = v
+		}
+		return consumed, capture
 	}
 }

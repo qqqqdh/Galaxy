@@ -40,6 +40,7 @@ func (i *ide) drawHints(screen tcell.Screen) {
 	if row < 0 || row >= height || column < 0 || column >= width {
 		return
 	}
+	column = i.active.syntax.decoratedColumn(x+column, y+row) - x
 	popupWidth := min(width, 56)
 	popupHeight := min(i.hints.GetItemCount()+2, 9)
 	start := row + 1

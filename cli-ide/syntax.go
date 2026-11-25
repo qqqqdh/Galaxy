@@ -12,7 +12,7 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-// The text area owns the document, selection, cursor and input. Only recolor its drawn cells.
+// The text area owns the document, selection, cursor and input.
 type syntaxView struct {
 	*tview.TextArea
 	definitionSelection *[2]int
@@ -24,6 +24,8 @@ type syntaxView struct {
 	working             bool
 	tabSize             int
 	spans               []colorSpan
+	swatches            []colorSwatch
+	drawnSwatches       []swatchCell
 	marks               []colorSpan
 	columns             int
 	columnsRevision     uint64
@@ -50,14 +52,17 @@ func (v *syntaxView) invalidate() {
 	v.revision.Add(1)
 	v.valid = false
 	v.spans = nil
+	v.swatches = nil
 }
 
 type editorScreen struct {
 	tcell.Screen
-	left, right int
+	left, right      int
+	cursorX, cursorY int
+	cursorVisible    bool
 }
 
-func (s editorScreen) SetContent(x, y int, r rune, combining []rune, style tcell.Style) {
+func (s *editorScreen) SetContent(x, y int, r rune, combining []rune, style tcell.Style) {
 	if x < s.left || x >= s.right {
 		return
 	}
@@ -67,10 +72,22 @@ func (s editorScreen) SetContent(x, y int, r rune, combining []rune, style tcell
 	s.Screen.SetContent(x, y, r, combining, style)
 }
 
+func (s *editorScreen) ShowCursor(x, y int) {
+	s.cursorX, s.cursorY, s.cursorVisible = x, y, true
+	s.Screen.ShowCursor(x, y)
+}
+
+func (s *editorScreen) HideCursor() {
+	s.cursorVisible = false
+	s.Screen.HideCursor()
+}
+
 func (v *syntaxView) Draw(screen tcell.Screen) {
+	v.drawnSwatches = v.drawnSwatches[:0]
 	left, _, width, _ := v.GetRect()
 	// A selected tab can start left of the visible columns in tview's TextArea.
-	screen = editorScreen{Screen: screen, left: left, right: left + width}
+	editor := &editorScreen{Screen: screen, left: left, right: left + width}
+	screen = editor
 	v.TextArea.Draw(screen)
 	// A newly opened target needs its line layout before byte offsets map to screen rows.
 	if r := v.definitionSelection; r != nil {
@@ -89,18 +106,18 @@ func (v *syntaxView) Draw(screen tcell.Screen) {
 	if !v.valid && !v.working {
 		source, lexer, tabSize, revision := v.GetText(), v.lexer, v.tabSize, v.revision.Load()
 		if len(source) <= 4096 {
-			v.spans = syntaxSpans(lexer, source, tabSize, nil)
+			v.spans, v.swatches = syntaxSpans(lexer, source, tabSize, nil)
 			v.valid = true
 		} else {
 			// Keep typing responsive while lexing a larger document.
 			v.working = true
 			go func() {
 				stale := func() bool { return v.revision.Load() != revision }
-				spans := syntaxSpans(lexer, source, tabSize, stale)
+				spans, swatches := syntaxSpans(lexer, source, tabSize, stale)
 				v.app.QueueUpdateDraw(func() {
 					v.working = false
 					if !stale() {
-						v.spans, v.valid = spans, true
+						v.spans, v.swatches, v.valid = spans, swatches, true
 					}
 				})
 			}()
@@ -135,6 +152,9 @@ func (v *syntaxView) Draw(screen tcell.Screen) {
 			col += max(1, w)
 		}
 	}
+	if len(v.swatches) != 0 {
+		v.drawColorSwatches(editor)
+	}
 }
 
 var syntaxColors = map[chroma.TokenType]tcell.Color{
@@ -162,29 +182,54 @@ func tokenColor(kind chroma.TokenType) tcell.Color {
 	return syntaxColors[kind.Category()]
 }
 
-func syntaxSpans(lexer chroma.Lexer, source string, tabSize int, stale func() bool) (spans []colorSpan) {
+func syntaxSpans(lexer chroma.Lexer, source string, tabSize int, stale func() bool) (spans []colorSpan, swatches []colorSwatch) {
 	// Chroma iterators can panic on lexer errors. The underlying plain text stays editable.
 	defer func() {
 		if recover() != nil {
-			spans = nil
+			spans, swatches = nil, nil
 		}
 	}()
 	next, err := lexer.Tokenise(&chroma.TokeniseOptions{State: "root"}, source)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
+	html := lexer.Config().Name == "HTML"
+	web := html || lexer.Config().Name == "CSS"
+	var attr string
+	var matches []sourceSwatch
 	clusters := uniseg.NewGraphemes(source)
 	row, column, consumed, tokenEnd := 0, 0, 0, 0
+	firstOnRow := 0
+	finishRow := func() {
+		for index := firstOnRow; index < len(swatches); index++ {
+			swatches[index].lineEnd = column
+		}
+		firstOnRow = len(swatches)
+	}
 	for token := next(); token != chroma.EOF; token = next() {
 		if stale != nil && stale() {
-			return nil
+			return nil, nil
+		}
+		if web {
+			matches = appendCSSSwatch(matches[:0], token, source, tokenEnd)
+			if html {
+				matches, attr = htmlSwatches(matches, token, attr, tokenEnd)
+			}
 		}
 		tokenEnd += len(token.Value)
 		color := tokenColor(token.Type)
 		for consumed < tokenEnd && clusters.Next() {
 			part := clusters.Str()
+			if len(matches) > 0 && matches[0].start <= consumed {
+				match := matches[0]
+				if match.start == consumed {
+					swatches = append(swatches, colorSwatch{colorSpan{row, column, column + match.width, match.color}, 0})
+				}
+				matches = matches[1:]
+			}
 			consumed += len(part)
 			if part == "\n" || part == "\r\n" {
+				finishRow()
 				row++
 				column = 0
 				continue
@@ -204,5 +249,6 @@ func syntaxSpans(lexer chroma.Lexer, source string, tabSize int, stale func() bo
 			column += width
 		}
 	}
-	return spans
+	finishRow()
+	return spans, swatches
 }

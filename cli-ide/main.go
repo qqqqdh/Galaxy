@@ -9,7 +9,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-const version = "0.1.21"
+const version = "0.1.22"
 
 func main() {
 	showVersion := flag.Bool("version", false, "버전 표시")
@@ -78,6 +78,10 @@ func main() {
 	}
 	if recoveryErr != nil {
 		ide.notify("자동 복구 확인 필요 · " + recoveryErr.Error())
+	}
+	// Galaxy Terminal's xterm supports RGB even though Ubuntu sets TERM=xterm-256color.
+	if os.Getenv("GALAXY_HOSTNAME") != "" && os.Getenv("TERM") == "xterm-256color" && os.Getenv("COLORTERM") == "" {
+		os.Setenv("COLORTERM", "truecolor")
 	}
 	screen, err := tcell.NewScreen()
 	if err != nil {
