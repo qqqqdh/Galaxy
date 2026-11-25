@@ -301,7 +301,7 @@ func (c *languageClient) close() {
 		c.server = nil
 	}
 }
-func (c *languageClient) query(life, request context.Context, p nativeProject, files map[string]string, path string, pos lspPos, method string) (data json.RawMessage, err error) {
+func (c *languageClient) query(life, request context.Context, p nativeProject, files map[string]string, path string, pos lspPos, method string, newName ...string) (data json.RawMessage, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if request.Err() != nil {
@@ -354,5 +354,30 @@ func (c *languageClient) query(life, request context.Context, p nativeProject, f
 	if method == "diagnostic" {
 		return s.diagnostics(path)
 	}
-	return s.call("textDocument/"+method, rpcParams{"textDocument": rpcParams{"uri": fileURI(path)}, "position": pos})
+	params := rpcParams{"textDocument": rpcParams{"uri": fileURI(path)}, "position": pos}
+	switch method {
+	case "references":
+		params["context"] = rpcParams{"includeDeclaration": true}
+	case "rename":
+		if len(newName) != 1 {
+			return nil, errors.New("새 심볼 이름이 필요합니다")
+		}
+		params["newName"] = newName[0]
+	}
+	result, err := s.call("textDocument/"+method, params)
+	if err != nil || method != "rename" {
+		return result, err
+	}
+	edits, err := decodeRename(result, func(path string, version int) bool {
+		doc, ok := s.documents.Load(path)
+		if !ok {
+			// Some servers, including gopls, use zero for unopened disk files.
+			return version == 0
+		}
+		return doc.(serverDocument).version == version
+	})
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(edits)
 }

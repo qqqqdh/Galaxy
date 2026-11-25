@@ -28,7 +28,8 @@ func TestDiagnosticUnderlineAndJump(t *testing.T) {
 	defer screen.Fini()
 	i.active.syntax.SetRect(0, 0, 40, 6)
 	i.active.syntax.Draw(screen)
-	_, _, style, _ := screen.GetContent(12, 2)
+	x, y, _, _ := i.active.syntax.GetInnerRect()
+	_, _, style, _ := screen.GetContent(x+11, y+1)
 	fg, _, attrs := style.Decompose()
 	if fg != m.color || attrs&tcell.AttrUnderline == 0 {
 		t.Fatal("missing red underline")

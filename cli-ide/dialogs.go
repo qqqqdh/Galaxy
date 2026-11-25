@@ -34,8 +34,8 @@ func (i *ide) dismiss() {
 	if i.pickerCancel != nil {
 		i.pickerCancel()
 		i.pickerCancel = nil
-		i.pickerField = nil
 	}
+	i.pickerField = nil
 	i.pages.RemovePage("dialog")
 	i.dialog = false
 	if i.diffCancel != nil {
@@ -93,15 +93,26 @@ func (i *ide) openPrompt() {
 func (i *ide) fileMenu() {
 	list := tview.NewList().ShowSecondaryText(true)
 	list.SetBorder(true).SetTitle(" 파일과 프로젝트 · Esc 닫기 ")
-	actions := []struct {
-		name, shortcut string
-		run            func()
-	}{
+	for _, action := range i.fileActions() {
+		list.AddItem(action.name, action.shortcut, 0, func() { i.dismiss(); action.run() })
+	}
+	i.showDialog(list, 76, 29)
+}
+
+type ideAction struct {
+	name, shortcut string
+	run            func()
+}
+
+func (i *ide) fileActions() []ideAction {
+	return []ideAction{
 		{"파일 열기", "Ctrl+O", i.openPrompt},
 		{"빠른 파일 열기", "Ctrl+P · 파일명 일부로 찾기", i.quickOpen},
 		{"프로젝트 전체 검색", "열린 문서의 편집 내용 포함", func() { i.openDock("검색") }},
 		{"코드 자동완성", "Ctrl+K", func() { i.askLanguageServer("completion", false) }},
 		{"함수 정의로 이동", "Ctrl+] · F12", func() { i.askLanguageServer("definition", false) }},
+		{"참조 찾기", "언어 서버 · references", func() { i.askLanguageServer("references", false) }},
+		{"심볼 이름 변경", "언어 서버 · rename", i.renameSymbol},
 		{"새 파일", "Ctrl+N", i.newFile},
 		{"저장", "Ctrl+S", func() { i.save(i.active, "", nil) }},
 		{"다른 이름으로 저장", "현재 파일 경로를 새 이름으로 변경", func() {
@@ -111,17 +122,70 @@ func (i *ide) fileMenu() {
 		{"파일 닫기", "Ctrl+W", i.closeFile},
 		{"찾기와 바꾸기", "Ctrl+H", func() { i.findPrompt(true) }},
 		{"실행 작업", "F5 · 프로젝트 명령과 AI CLI", i.taskMenu},
+		{"웹 미리보기", "live preview · 저장 시 자동 갱신", i.openWebPreview},
+		{"웹 미리보기 종료", "stop preview", i.stopWebPreview},
+		{"현재 Go 테스트 실행", "go test · 커서가 있는 테스트 함수", i.runCurrentTest},
+		{"테스트 결과", "test results", func() { i.openDock("테스트 결과") }},
+		{"다음 오류로 이동", "Alt+↓", func() { i.nextProblem(1) }},
+		{"이전 오류로 이동", "Alt+↑", func() { i.nextProblem(-1) }},
 		{"프로젝트 셸", "F7 · exit로 IDE에 복귀", func() { i.runTask(shellTask()) }},
 		{"프로젝트 설정 열기", ".galaxy-ide.json", i.openConfig},
 		{"설정과 파일 목록 새로 읽기", "들여쓰기와 실행 작업 적용", i.reloadConfig},
 		{"도움말", "F1", i.help},
 		{"종료", "Ctrl+Q", func() { i.quit(0) }},
 	}
-	for _, action := range actions {
-		action := action
-		list.AddItem(action.name, action.shortcut, 0, func() { i.dismiss(); action.run() })
+}
+
+func (i *ide) commandPalette() {
+	actions := i.fileActions()
+	field := tview.NewInputField().SetLabel(" 명령 검색  ")
+	list := tview.NewList().ShowSecondaryText(true).SetHighlightFullLine(true)
+	box := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(field, 1, 0, true).AddItem(list, 0, 1, false)
+	box.SetBorder(true).SetTitle(" 명령 팔레트 · Enter 실행 · Esc 닫기 ")
+	var matches []ideAction
+	filter := func(value string) {
+		list.Clear()
+		matches = matches[:0]
+		words := strings.Fields(strings.ToLower(value))
+		for _, action := range actions {
+			label := strings.ToLower(action.name + " " + action.shortcut)
+			matchesAll := true
+			for _, word := range words {
+				matchesAll = matchesAll && strings.Contains(label, word)
+			}
+			if matchesAll {
+				matches = append(matches, action)
+				list.AddItem(tview.Escape(action.name), tview.Escape(action.shortcut), 0, nil)
+			}
+		}
+		if len(matches) == 0 {
+			list.AddItem("일치하는 명령 없음", "", 0, nil)
+		}
 	}
-	i.showDialog(list, 76, 29)
+	selectAction := func(index int) {
+		if index >= 0 && index < len(matches) {
+			action := matches[index]
+			i.dismiss()
+			action.run()
+		}
+	}
+	list.SetSelectedFunc(func(index int, _, _ string, _ rune) { selectAction(index) })
+	field.SetChangedFunc(filter).SetInputCapture(func(e *tcell.EventKey) *tcell.EventKey {
+		switch e.Key() {
+		case tcell.KeyEnter:
+			selectAction(list.GetCurrentItem())
+		case tcell.KeyDown:
+			list.SetCurrentItem(min(list.GetItemCount()-1, list.GetCurrentItem()+1))
+		case tcell.KeyUp:
+			list.SetCurrentItem(max(0, list.GetCurrentItem()-1))
+		default:
+			return e
+		}
+		return nil
+	})
+	filter("")
+	i.showDialog(box, 82, 24)
+	i.pickerField = field
 }
 
 func (i *ide) findPrompt(replace bool) {
@@ -233,6 +297,7 @@ Ctrl+P          파일명 일부로 빠른 열기
 하단 변경사항   Git 변경 목록 · 파일을 눌러 비교 · Esc로 목록 복귀
 Ctrl+K          커서 옆 자동완성 · ↑/↓ 선택 · Tab 적용 · Esc 닫기
 Ctrl+] / F12    커서에 있는 함수의 정의로 이동
+상단 명령 / F10 명령 팔레트 · 참조 찾기 · 심볼 이름 변경
 Ctrl+N          새 파일
 Ctrl+S          저장
 Ctrl+W          현재 탭 닫기
@@ -245,6 +310,7 @@ Ctrl+E / F9     파일 메뉴 · 다른 이름으로 저장 · 설정
 [#8edbc6]편집[-]
 Shift+방향키    선택
 Alt+← / Alt+→   코드 가로 이동 · 편집기 아래 ◀/▶ 버튼
+Alt+↑ / Alt+↓   이전 오류 / 다음 오류로 이동
 Ctrl+A          전체 선택
 Ctrl+C / X / V  IDE 내부 복사 / 잘라내기 / 붙여넣기
 Ctrl+Z / Y      실행 취소 / 다시 실행
@@ -258,6 +324,7 @@ Android 클립보드는 터미널의 붙여넣기 메뉴 또는 Ctrl+Shift+V를 
 [#8edbc6]실행과 확장[-]
 Ctrl+R          프로젝트 build 작업 · 현재 언어 실행 또는 웹 미리보기
 실행 메뉴       프로젝트 test 작업 선택
+명령 팔레트     커서가 있는 Go 테스트만 실행 · 하단 테스트 결과에서 위치 이동
 F5              실행 작업 메뉴
 상단 AI         Codex · Claude Code · AGY를 코드 옆에서 실행
 Ctrl+J          문제 목록 · Enter로 오류 위치 이동

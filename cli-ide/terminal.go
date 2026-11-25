@@ -296,6 +296,9 @@ func (i *ide) makeDock() *tview.Flex {
 	i.dock.AddPage("검색", i.makeSearchPane(), true, false)
 	i.changeList = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)
 	i.dock.AddPage("변경사항", i.changeList, true, false)
+	i.testList = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)
+	i.testList.AddItem("실행한 테스트가 없습니다", "", 0, nil)
+	i.dock.AddPage("테스트 결과", i.testList, true, false)
 	i.hints = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)
 	i.hints.SetBorder(true).SetTitle(" 자동완성 ").SetBackgroundColor(panel)
 	i.problemButton = tview.NewButton("문제 (0)").SetSelectedFunc(func() { i.openDock("문제") })
@@ -304,6 +307,7 @@ func (i *ide) makeDock() *tview.Flex {
 		AddItem(tview.NewButton("터미널 확대").SetSelectedFunc(i.toggleFullTerminal), 0, 14, false).
 		AddItem(tview.NewButton("검색").SetSelectedFunc(func() { i.openDock("검색") }), 0, 9, false).
 		AddItem(tview.NewButton("변경사항").SetSelectedFunc(func() { i.openDock("변경사항") }), 0, 12, false).
+		AddItem(tview.NewButton("테스트").SetSelectedFunc(func() { i.openDock("테스트 결과") }), 0, 8, false).
 		AddItem(tview.NewButton("접기").SetSelectedFunc(i.hideDock), 0, 9, false)
 	i.dockOpen = true
 	return bar
@@ -334,6 +338,8 @@ func (i *ide) openDock(page string) {
 	} else if page == "변경사항" {
 		i.app.SetFocus(i.changeList)
 		i.refreshChanges()
+	} else if page == "테스트 결과" {
+		i.app.SetFocus(i.testList)
 	} else {
 		i.app.SetFocus(i.problemList)
 	}

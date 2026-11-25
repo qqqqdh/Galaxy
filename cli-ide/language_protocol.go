@@ -31,15 +31,20 @@ type languageReport struct {
 
 func (s *languageServer) initialize(root string) error {
 	folders := []rpcParams{{"uri": fileURI(root), "name": filepath.Base(root)}}
-	data, err := s.call("initialize", rpcParams{
+	web := s.name == "vscode-css-language-server" || s.name == "vscode-html-language-server"
+	params := rpcParams{
 		"processId": os.Getpid(), "rootUri": fileURI(root), "workspaceFolders": folders,
-		"initializationOptions": rpcParams{"embeddedLanguages": rpcParams{"css": true, "javascript": true}},
 		"capabilities": rpcParams{
-			"workspace": rpcParams{"configuration": true, "workspaceFolders": true},
-			"textDocument": rpcParams{"completion": rpcParams{"completionItem": rpcParams{"snippetSupport": s.name == "vscode-css-language-server" || s.name == "vscode-html-language-server"}},
+			"workspace": rpcParams{"configuration": true, "workspaceFolders": true,
+				"workspaceEdit": rpcParams{"documentChanges": true}},
+			"textDocument": rpcParams{"completion": rpcParams{"completionItem": rpcParams{"snippetSupport": web}},
 				"publishDiagnostics": rpcParams{"versionSupport": true}, "diagnostic": rpcParams{}},
 		},
-	})
+	}
+	if web {
+		params["initializationOptions"] = rpcParams{"embeddedLanguages": rpcParams{"css": true, "javascript": true}}
+	}
+	data, err := s.call("initialize", params)
 	if err != nil {
 		return err
 	}

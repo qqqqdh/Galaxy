@@ -102,7 +102,7 @@ func (i *ide) scheduleCompletion(d *openDocument) {
 		})
 	})
 }
-func (i *ide) askLanguageServer(method string, auto bool) {
+func (i *ide) askLanguageServer(method string, auto bool, newName ...string) {
 	i.clearHints()
 	d := i.active
 	if d == nil || toolsFor(d.disk.path).id == "" {
@@ -124,7 +124,11 @@ func (i *ide) askLanguageServer(method string, auto bool) {
 		i.notify(tools.server + " 조회 중…")
 	}
 	go func() {
-		data, err := i.languages.query(i.languageLife, ctx, p, files, path, lspPosition(text, at), method)
+		data, err := i.languages.query(i.languageLife, ctx, p, files, path, lspPosition(text, at), method, newName...)
+		var rename []renameFile
+		if err == nil && method == "rename" {
+			rename, err = planRename(p.root, data, files)
+		}
 		if ctx.Err() != nil {
 			return
 		}
@@ -142,8 +146,15 @@ func (i *ide) askLanguageServer(method string, auto bool) {
 				}
 				return
 			}
-			if method == "definition" {
+			switch method {
+			case "definition":
 				i.jumpDefinition(data)
+				return
+			case "references":
+				i.showReferences(data)
+				return
+			case "rename":
+				i.showRename(rename)
 				return
 			}
 			var result struct{ Items []completion }
@@ -247,7 +258,10 @@ func (i *ide) jumpDefinition(data json.RawMessage) {
 		i.notify("정의를 찾지 못했습니다")
 		return
 	}
-	target := locations[0]
+	i.jumpLocation(locations[0], "정의")
+}
+
+func (i *ide) jumpLocation(target location, label string) {
 	if target.URI == "" && target.TargetURI != "" {
 		target.URI, target.Range = target.TargetURI, target.TargetSelectionRange
 	}
@@ -262,7 +276,7 @@ func (i *ide) jumpDefinition(data json.RawMessage) {
 	text := i.active.editor.GetText()
 	start, ok := bytePosition(text, target.Range.Start)
 	if !ok {
-		i.notify("정의 위치가 변경됐습니다")
+		i.notify(label + " 위치가 변경됐습니다")
 		return
 	}
 	end, valid := bytePosition(text, target.Range.End)
@@ -270,7 +284,8 @@ func (i *ide) jumpDefinition(data json.RawMessage) {
 		end = start
 	}
 	i.active.syntax.definitionSelection = &[2]int{start, end}
-	i.notify(fmt.Sprintf("정의 · %s · %d행", i.active.name(), target.Range.Start.Line+1))
+	i.app.SetFocus(i.active.editor)
+	i.notify(fmt.Sprintf("%s · %s · %d행", label, i.active.name(), target.Range.Start.Line+1))
 }
 
 func (i *ide) languageFiles(server string) map[string]string {

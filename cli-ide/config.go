@@ -14,6 +14,7 @@ type task struct {
 	Group       string   `json:"group,omitempty"`
 	buildAndRun bool
 	assistant   bool
+	preview     bool
 }
 
 type config struct {

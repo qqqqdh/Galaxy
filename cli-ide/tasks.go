@@ -158,7 +158,7 @@ func (i *ide) taskMenu() {
 	list.SetBorder(true).SetTitle(" 실행 작업 · 선택한 명령을 프로젝트 폴더에서 실행 ")
 	tasks := append([]task{shellTask()}, assistantTasks...)
 	tasks = append(tasks, task{Name: "Git 상태", Args: []string{"git", "status", "--short", "--branch"}})
-	if t, ok := fileTask(i.active.disk.path, i.nativeProject().root); ok {
+	if t, ok := fileTask(i.active.disk.path); ok {
 		tasks = append([]task{t}, tasks...)
 	}
 	if build, ok := nativeBuild(i.active.disk.path); ok {
@@ -180,7 +180,9 @@ func (i *ide) taskMenu() {
 	for _, entry := range tasks {
 		entry := entry
 		description := strings.Join(entry.Args, " ")
-		if entry.Group == "build" {
+		if entry.preview {
+			description = "저장할 때 브라우저 자동 갱신"
+		} else if entry.Group == "build" {
 			description = "Ctrl+R · 프로젝트 빌드 · " + description
 		} else if entry.Group == "test" {
 			description = "프로젝트 테스트 · " + description
@@ -202,10 +204,14 @@ func (i *ide) defaultBuild() (task, bool) {
 	if t, ok := nativeBuild(i.active.disk.path); ok {
 		return t, true
 	}
-	return fileTask(i.active.disk.path, i.nativeProject().root)
+	return fileTask(i.active.disk.path)
 }
 
 func (i *ide) runTask(t task) {
+	if t.preview {
+		i.openWebPreview()
+		return
+	}
 	if t.assistant {
 		i.openAssistant(t)
 		return

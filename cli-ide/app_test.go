@@ -89,11 +89,16 @@ func TestSyntaxInEditor(t *testing.T) {
 	d.syntax.SetRect(0, 0, 45, 8)
 	colorAt := func(x, y int) tcell.Color {
 		t.Helper()
-		_, _, style, _ := screen.GetContent(x+1, y+1)
+		left, top, _, _ := d.syntax.GetInnerRect()
+		_, _, style, _ := screen.GetContent(x+left, y+top)
 		fg, _, _ := style.Decompose()
 		return fg
 	}
 	d.syntax.Draw(screen)
+	left, top, _, _ := d.syntax.GetInnerRect()
+	if number, _, _, _ := screen.GetContent(left-2, top); number != '1' {
+		t.Fatalf("first line number = %q", number)
+	}
 	if colorAt(4, 2) != foreground {
 		t.Fatal("new document should use the default text color")
 	}
@@ -116,6 +121,9 @@ func TestSyntaxInEditor(t *testing.T) {
 	}
 	d.syntax.SetOffset(2, 4)
 	d.syntax.Draw(screen)
+	if number, _, _, _ := screen.GetContent(left-2, top); number != '3' {
+		t.Fatalf("line number after scrolling = %q", number)
+	}
 	if colorAt(0, 0) != syntaxColors[chroma.KeywordType] {
 		t.Fatal("highlight shifted after scrolling")
 	}
@@ -284,6 +292,8 @@ func TestHorizontalScrollKeepsCaretAndSelection(t *testing.T) {
 	defer screen.Fini()
 	d.syntax.Draw(screen)
 	d.editor.Select(0, len(start))
+	_, _, editorWidth, _ := d.syntax.GetInnerRect()
+	step := max(4, editorWidth/2)
 	check := func(want int) {
 		t.Helper()
 		row, col := d.editor.GetOffset()
@@ -301,19 +311,19 @@ func TestHorizontalScrollKeepsCaretAndSelection(t *testing.T) {
 		}
 	}
 	mouse(tview.MouseLeftDown, x+width-1, y, tcell.ModNone)
-	check(20)
+	check(step)
 	mouse(tview.MouseScrollDown, x+10, y-2, tcell.ModShift)
-	check(24)
+	check(step + 4)
 	mouse(tview.MouseLeftDown, x+14, y, tcell.ModNone)
 	mouse(tview.MouseMove, x+22, y, tcell.ModNone)
 	mouse(tview.MouseLeftUp, x+22, y, tcell.ModNone)
-	check(32)
+	check(step + 12)
 	i.handleKey(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModAlt))
 	check(12)
 	for range 8 {
 		mouse(tview.MouseLeftDown, x+width-1, y, tcell.ModNone)
 	}
-	check(59) // Four tab cells, four Hangul cells, 90 ASCII cells, and room for the end caret.
+	check(99 - editorWidth) // Four tab cells, four Hangul cells, 90 ASCII cells, and room for the end caret.
 }
 
 func TestSelectedTabStaysInsideEditor(t *testing.T) {

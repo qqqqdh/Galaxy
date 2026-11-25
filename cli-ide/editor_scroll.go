@@ -109,6 +109,14 @@ func (v *syntaxView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, f
 			}
 			return true, nil
 		}
+		if action == tview.MouseLeftClick && e.Modifiers() == tcell.ModNone && v.onColorPick != nil {
+			for _, chip := range v.drawnSwatches {
+				if chip.X == col && chip.Y == row {
+					v.onColorPick(chip.edit)
+					return true, nil
+				}
+			}
+		}
 		if source := v.sourceColumn(col, row); source != col {
 			e = tcell.NewEventMouse(source, row, e.Buttons(), e.Modifiers())
 		}

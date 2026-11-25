@@ -2,15 +2,18 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -127,6 +130,7 @@ func (p problem) mark(lines []string, tab int) (colorSpan, bool) {
 }
 
 func (i *ide) showProblems(items []problem, empty string) {
+	i.problems = items
 	i.problemList.Clear()
 	i.problemButton.SetLabel(fmt.Sprintf("문제 (%d)", len(items)))
 	for _, d := range i.documents {
@@ -145,32 +149,79 @@ func (i *ide) showProblems(items []problem, empty string) {
 				d.syntax.marks = append(d.syntax.marks, mark)
 			}
 		}
-		i.problemList.AddItem(tview.Escape(p.label()), "", 0, func() {
-			if p.file == "" || p.line < 1 {
-				return
-			}
-			if i.active.disk.path != p.file {
-				if err := i.openFile(p.file); err != nil {
-					i.notify(err.Error())
-					return
-				}
-			}
-			lines := strings.Split(i.active.editor.GetText(), "\n")
-			offset := 0
-			for row := 0; row < min(p.line-1, len(lines)); row++ {
-				offset += len(lines[row]) + 1
-			}
-			if p.line <= len(lines) {
-				offset += min(max(0, p.first-1), len(lines[p.line-1]))
-			}
-			offset = min(offset, i.active.editor.GetTextLength())
-			i.active.editor.Select(offset, offset)
-			i.app.SetFocus(i.active.editor)
-		})
+		i.problemList.AddItem(tview.Escape(p.label()), "", 0, func() { i.jumpProblem(p) })
 	}
 	if len(items) == 0 {
 		i.problemList.AddItem(empty, "", 0, nil)
 	}
+}
+
+func (i *ide) jumpProblem(p problem) {
+	if p.file == "" || p.line < 1 {
+		return
+	}
+	if i.active.disk.path != p.file {
+		if err := i.openFile(p.file); err != nil {
+			i.notify(err.Error())
+			return
+		}
+	}
+	text := i.active.editor.GetText()
+	start, ok := bytePosition(text, lspPos{Line: p.line - 1})
+	if !ok {
+		i.notify("결과의 행 번호가 변경됐습니다")
+		return
+	}
+	line, _, _ := strings.Cut(text[start:], "\n")
+	offset := start + min(max(0, p.first-1), len(line))
+	for offset > start && offset < len(text) && !utf8.RuneStart(text[offset]) {
+		offset--
+	}
+	i.active.editor.Select(offset, offset)
+	i.active.syntax.definitionSelection = &[2]int{offset, offset}
+	i.app.SetFocus(i.active.editor)
+}
+
+func (i *ide) nextProblem(direction int) {
+	var errors []problem
+	for _, list := range [][]problem{i.problems, i.testProblems} {
+		for _, p := range list {
+			if p.file != "" && p.line > 0 && (p.kind == "error" || p.kind == "fatal error") {
+				errors = append(errors, p)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		i.notify("이동할 오류 위치가 없습니다")
+		return
+	}
+	compare := func(a, b problem) int {
+		return cmp.Or(cmp.Compare(a.file, b.file), cmp.Compare(a.line, b.line), cmp.Compare(a.first, b.first))
+	}
+	slices.SortStableFunc(errors, compare)
+	_, start, _ := i.active.editor.GetSelection()
+	text := i.active.editor.GetText()
+	cursor := problem{
+		file: i.active.disk.path, line: strings.Count(text[:start], "\n") + 1,
+		first: start - strings.LastIndexByte(text[:start], '\n'),
+	}
+	if direction > 0 {
+		for _, p := range errors {
+			if compare(p, cursor) > 0 {
+				i.jumpProblem(p)
+				return
+			}
+		}
+		i.jumpProblem(errors[0])
+		return
+	}
+	for n := len(errors) - 1; n >= 0; n-- {
+		if compare(errors[n], cursor) < 0 {
+			i.jumpProblem(errors[n])
+			return
+		}
+	}
+	i.jumpProblem(errors[len(errors)-1])
 }
 
 func (i *ide) cancelCheck() {

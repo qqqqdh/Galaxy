@@ -5,14 +5,14 @@
 | 프로그램 | 공식 다운로드 | 소스와 사용법 | 버전별 기록 |
 | --- | --- | --- | --- |
 | Galaxy Terminal (Android) | [0.4.15 APK](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.15) | [터미널 사용법과 빌드](terminal/) | [터미널 배포 기록](versions/terminal/) |
-| Galaxy IDE (Ubuntu ARM64) | [0.1.22 실행 파일](https://github.com/qqqqdh/Galaxy/releases/tag/ide-v0.1.22) | [IDE 사용법과 빌드](cli-ide/) | [IDE 변경 이력](cli-ide/CHANGELOG.md) |
+| Galaxy IDE (Ubuntu ARM64) | [0.2.0 실행 파일](https://github.com/qqqqdh/Galaxy/releases/tag/ide-v0.2.0) | [IDE 사용법과 빌드](cli-ide/) | [IDE 변경 이력](cli-ide/CHANGELOG.md) |
 | Galaxy 파일 관리자 (Ubuntu) | [0.1.1 실행 파일](https://github.com/qqqqdh/Galaxy/releases/tag/file-manager-v0.1.1) | [파일 관리자](file-manager/) | [파일 관리자 버전 기록](versions/file-manager/) |
 | Galaxy 서버 실행 관리자 (Ubuntu) | [0.1.0 실행 파일](https://github.com/qqqqdh/Galaxy/releases/tag/server-manager-v0.1.0) | [서버 실행 관리자](server-manager/) | [서버 실행 관리자 버전 기록](versions/server-manager/) |
 
 ## 최신 릴리스 변경 사항
 
 - Galaxy Terminal에서 `cat` 같은 프로그램을 실행 중에도 조합 중인 한글을 입력 줄에 표시하고 커서를 글자 뒤에 둡니다. 화면 방향키는 한글을 확정한 뒤 전송합니다. Ubuntu의 Android 파일 전송을 정식 앱에서 사용할 수 있습니다.
-- Galaxy IDE에서 CSS 및 HTML 스타일의 16진수 색상과 `rgba()` 값 옆에 작은 색상 미리보기를 표시합니다.
+- Galaxy IDE에 명령 팔레트, 줄 번호와 오류 이동, 참조 검색과 이름 변경, 현재 Go 테스트 실행을 추가했습니다. 웹 미리보기 자동 갱신, CSS 변수 색상 미리보기와 터치 편집, 프로젝트 작업 위치 복원을 지원합니다.
 - Galaxy 파일 관리자는 PAX 전역 헤더가 있는 GitHub 소스 TAR.GZ를 풀 수 있습니다. 압축을 푼 폴더에 일반 폴더와 같은 권한을 적용합니다.
 
 서버 실행 관리자의 동시 로그 쓰기 수정은 `main` 소스에 반영되어 있습니다.

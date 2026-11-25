@@ -9,7 +9,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-const version = "0.1.22"
+const version = "0.2.0"
 
 func main() {
 	showVersion := flag.Bool("version", false, "버전 표시")
@@ -56,6 +56,7 @@ func main() {
 		state = filepath.Join(home, ".local", "state")
 	}
 	count, recoveryErr := ide.recoverDrafts(filepath.Join(state, "galaxy-ide", "drafts"))
+	sessionErr := ide.restoreSession(filepath.Join(state, "galaxy-ide", "sessions"))
 	if file != "" {
 		opened := false
 		for _, d := range ide.documents {
@@ -70,8 +71,11 @@ func main() {
 				fail(err)
 			}
 		}
-	} else if count == 0 {
+	} else if len(ide.documents) == 0 {
 		ide.newFile()
+	}
+	if sessionErr != nil {
+		ide.notify("작업 위치 복원 확인 필요 · " + sessionErr.Error())
 	}
 	if count > 0 {
 		ide.notify(fmt.Sprintf("미저장 문서 %d개를 복구했습니다 · Ctrl+S로 저장", count))
@@ -96,6 +100,9 @@ func main() {
 	screen.EnablePaste()
 	if err := ide.app.Run(); err != nil {
 		fail(err)
+	}
+	if ide.sessionError != nil {
+		fmt.Fprintln(os.Stderr, "Galaxy IDE 작업 위치 저장:", ide.sessionError)
 	}
 }
 

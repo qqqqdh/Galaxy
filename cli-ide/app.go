@@ -70,6 +70,12 @@ type ide struct {
 	assistantName              string
 	problemList                *tview.List
 	problemButton              *tview.Button
+	problems, testProblems     []problem
+	testList                   *tview.List
+	testCancel                 context.CancelFunc
+	preview                    *webPreview
+	sessionPath                string
+	sessionError               error
 	app                        *tview.Application
 	inputScreen                *inputScreen
 	root                       string
@@ -149,7 +155,7 @@ func newIDE(root string, config config) *ide {
 	for _, item := range []struct {
 		label string
 		run   func()
-	}{{"탐색기", i.toggleTree}, {"파일", i.fileMenu}, {"실행", i.taskMenu}, {"AI", i.assistantMenu}, {"도움말", i.help}} {
+	}{{"명령", i.commandPalette}, {"탐색기", i.toggleTree}, {"파일", i.fileMenu}, {"실행", i.taskMenu}, {"AI", i.assistantMenu}, {"도움말", i.help}} {
 		button := tview.NewButton(item.label).SetSelectedFunc(item.run)
 		button.SetStyle(tcell.StyleDefault.Background(panel).Foreground(foreground))
 		header.AddItem(button, 10, 0, false)
@@ -285,6 +291,7 @@ func (i *ide) addDocument(disk *document) {
 	d.editor.SetBorder(true).SetTitle(" " + tview.Escape(d.name()) + " ").SetTitleColor(muted)
 	d.editor.SetClipboard(func(text string) { i.clipboard = text }, func() string { return i.clipboard })
 	d.syntax = &syntaxView{TextArea: d.editor, app: i.app}
+	d.syntax.onColorPick = func(value colorLiteral) { i.pickColor(d, value) }
 	d.syntax.setFilename(disk.path)
 	d.editor.SetChangedFunc(func() {
 		d.syntax.invalidate()
@@ -458,6 +465,12 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		case tcell.KeyRight:
 			i.active.syntax.pageColumns(1)
 			return nil
+		case tcell.KeyDown:
+			i.nextProblem(1)
+			return nil
+		case tcell.KeyUp:
+			i.nextProblem(-1)
+			return nil
 		}
 	}
 	if i.active != nil && i.active.editor.HasFocus() && toolsFor(i.active.disk.path).id != "" {
@@ -495,6 +508,10 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		i.quickOpen()
 		return nil
 	}
+	if event.Key() == tcell.KeyF10 {
+		i.commandPalette()
+		return nil
+	}
 	if i.searchField.HasFocus() || i.searchList.HasFocus() {
 		if event.Key() == tcell.KeyEscape {
 			i.app.SetFocus(i.active.editor)
@@ -502,7 +519,7 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return event
 	}
-	if event.Key() == tcell.KeyEscape && (i.problemList.HasFocus() || i.changeList.HasFocus()) {
+	if event.Key() == tcell.KeyEscape && (i.problemList.HasFocus() || i.changeList.HasFocus() || i.testList.HasFocus()) {
 		i.app.SetFocus(i.active.editor)
 		return nil
 	}
@@ -674,6 +691,9 @@ func (i *ide) save(d *openDocument, path string, after func()) {
 }
 
 func (i *ide) saved(d *openDocument, after func()) {
+	if i.preview != nil {
+		i.preview.saved(d.disk.path)
+	}
 	d.syntax.setFilename(d.disk.path)
 	if i.active == d {
 		i.checkActive()
@@ -735,6 +755,8 @@ func (i *ide) quit(index int) {
 				return
 			}
 		}
+		i.sessionError = i.saveSession()
+		i.stopWebPreview()
 		i.cancelCheck()
 		i.clearHints()
 		i.stopLanguages()

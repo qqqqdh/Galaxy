@@ -16,12 +16,13 @@ import (
 func TestLanguageToolsAndActions(t *testing.T) {
 	for _, tc := range []struct{ file, id, server, command string }{
 		{"Demo.java", "java", "jdtls", "java"}, {"demo.cjs", "javascript", "typescript-language-server", "node"},
-		{"index.htm", "html", "vscode-html-language-server", "python3"}, {"theme.css", "css", "vscode-css-language-server", "python3"},
+		{"index.htm", "html", "vscode-html-language-server", ""}, {"theme.css", "css", "vscode-css-language-server", ""},
 		{"demo.go", "go", "gopls", "go"}, {"demo.py", "python", "pyright-langserver", "python3"}, {"demo.rs", "rust", "rust-analyzer", "sh"},
 	} {
 		tools := toolsFor(tc.file)
-		task, ok := fileTask(tc.file, ".")
-		if !ok || task.Args[0] != tc.command || tools.id != tc.id || tools.server != tc.server || lexers.Match(tc.file) == nil {
+		task, ok := fileTask(tc.file)
+		if !ok || task.preview != (tc.command == "") || tc.command != "" && (len(task.Args) == 0 || task.Args[0] != tc.command) ||
+			tools.id != tc.id || tools.server != tc.server || lexers.Match(tc.file) == nil {
 			t.Errorf("%s: %#v %#v", tc.file, tools, task)
 		}
 	}
@@ -60,10 +61,10 @@ func TestPreviewProjectPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "index.html"), nil, 0644); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct{ path, url string }{{"css/style.css", "index.html"}, {"pages/a #.html", "pages/a%20%23.html"}} {
-		task, _ := fileTask(filepath.Join(root, filepath.FromSlash(tc.path)), root)
-		if task.Args[len(task.Args)-1] != tc.url || task.Args[len(task.Args)-2] != root {
-			t.Fatal(task)
+	for _, tc := range []struct{ path, entry string }{{"css/style.css", "index.html"}, {"pages/a #.html", "pages/a #.html"}, {"pages/script.js", "index.html"}} {
+		file := filepath.Join(root, filepath.FromSlash(tc.path))
+		if entry := filepath.ToSlash(previewEntry(root, file)); entry != tc.entry {
+			t.Fatalf("%s: %s", tc.path, entry)
 		}
 	}
 }

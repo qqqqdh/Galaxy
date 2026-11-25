@@ -17,6 +17,28 @@ import (
 type sourceSwatch struct {
 	start, width int
 	color        tcell.Color
+	edit         colorLiteral
+	variable     string
+}
+
+type colorLiteral struct {
+	start, end int
+	rgba       [4]float64
+}
+
+func literalSwatch(start, width, length int, r, g, b, alpha float64) sourceSwatch {
+	return sourceSwatch{
+		start: start, width: width, color: compositeSwatch(r, g, b, alpha),
+		edit: colorLiteral{start, start + length, [4]float64{r, g, b, alpha}},
+	}
+}
+
+func (s *sourceSwatch) shift(n int) {
+	s.start += n
+	if s.edit.end > 0 {
+		s.edit.start += n
+		s.edit.end += n
+	}
 }
 
 func appendHexSwatch(matches []sourceSwatch, source string, start int) []sourceSwatch {
@@ -54,8 +76,7 @@ func appendHexSwatch(matches []sourceSwatch, source string, start int) []sourceS
 	if len(digits) == 6 {
 		value = value<<8 | 0xff
 	}
-	color := compositeSwatch(float64(value>>24), float64(value>>16&0xff), float64(value>>8&0xff), float64(value&0xff)/255)
-	return append(matches, sourceSwatch{start, n + 1, color})
+	return append(matches, literalSwatch(start, n+1, n+1, float64(value>>24), float64(value>>16&0xff), float64(value>>8&0xff), float64(value&0xff)/255))
 }
 
 func compositeSwatch(r, g, b, alpha float64) tcell.Color {
@@ -69,6 +90,7 @@ func compositeSwatch(r, g, b, alpha float64) tcell.Color {
 const cssSpace = " \t\n\r\f"
 
 var cssNumber = regexp.MustCompile(`^[+-]?(?:[0-9]*\.[0-9]+|[0-9]+)(?:[eE][+-]?[0-9]+)?$`)
+var cssVariableName = regexp.MustCompile(`^--[a-zA-Z_][\w-]*$`)
 
 func rgbaComponent(text string, maximum float64, modern bool) (float64, bool) {
 	text = strings.Trim(text, cssSpace)
@@ -90,7 +112,11 @@ func appendCSSSwatch(matches []sourceSwatch, token chroma.Token, source string, 
 	if token.Type == chroma.LiteralNumberHex {
 		return appendHexSwatch(matches, source, start)
 	}
-	if token.Type != chroma.NameBuiltin && token.Type != chroma.NameFunction || !strings.EqualFold(token.Value, "rgba") {
+	if token.Type != chroma.NameBuiltin && token.Type != chroma.NameFunction {
+		return matches
+	}
+	isRGBA, isVar := strings.EqualFold(token.Value, "rgba"), strings.EqualFold(token.Value, "var")
+	if !isRGBA && !isVar {
 		return matches
 	}
 	open := start + len(token.Value)
@@ -104,6 +130,13 @@ func appendCSSSwatch(matches []sourceSwatch, token chroma.Token, source string, 
 		return matches
 	}
 	value = value[:close]
+	if isVar {
+		name := strings.Trim(value, cssSpace)
+		if cssVariableName.MatchString(name) {
+			return append(matches, sourceSwatch{start: start, width: len(token.Value) + 1, variable: name})
+		}
+		return matches
+	}
 	modern := !strings.ContainsRune(value, ',')
 	alphaText := "1"
 	var channels []string
@@ -139,10 +172,51 @@ func appendCSSSwatch(matches []sourceSwatch, token chroma.Token, source string, 
 	if !ok {
 		return matches
 	}
-	return append(matches, sourceSwatch{start, len(token.Value) + 1, compositeSwatch(rgb[0], rgb[1], rgb[2], alpha)})
+	return append(matches, literalSwatch(start, len(token.Value)+1, len(token.Value)+close+2, rgb[0], rgb[1], rgb[2], alpha))
 }
 
-func htmlSwatches(matches []sourceSwatch, token chroma.Token, attr string, start int) ([]sourceSwatch, string) {
+func recordCSSVariable(vars map[string]sourceSwatch, token chroma.Token, source string, offset, base int) {
+	if token.Type != chroma.NameVariable || !cssVariableName.MatchString(token.Value) {
+		return
+	}
+	if _, duplicate := vars[token.Value]; duplicate {
+		// Without selector matching a second declaration is ambiguous.
+		vars[token.Value] = sourceSwatch{}
+		return
+	}
+	remainder := source[min(len(source), offset+len(token.Value)):]
+	remainder = strings.TrimLeft(remainder, cssSpace)
+	if !strings.HasPrefix(remainder, ":") {
+		return
+	}
+	value := strings.TrimLeft(remainder[1:], cssSpace)
+	start := len(source) - len(value)
+	var matches []sourceSwatch
+	switch {
+	case strings.HasPrefix(value, "#"):
+		matches = appendHexSwatch(nil, source, start)
+	case len(value) >= 5 && strings.EqualFold(value[:5], "rgba("):
+		matches = appendCSSSwatch(nil, chroma.Token{Type: chroma.NameBuiltin, Value: value[:4]}, source, start)
+	case len(value) >= 4 && strings.EqualFold(value[:4], "var("):
+		matches = appendCSSSwatch(nil, chroma.Token{Type: chroma.NameFunction, Value: value[:3]}, source, start)
+	}
+	vars[token.Value] = sourceSwatch{}
+	if len(matches) == 0 {
+		return
+	}
+	match := matches[0]
+	end := match.edit.end
+	if match.variable != "" {
+		end = start + strings.IndexByte(value, ')') + 1
+	}
+	tail := strings.TrimLeft(source[end:], cssSpace)
+	if tail == "" || tail[0] == ';' || tail[0] == '}' || strings.HasPrefix(tail, "!important") {
+		match.shift(base)
+		vars[token.Value] = match
+	}
+}
+
+func htmlSwatches(matches []sourceSwatch, token chroma.Token, attr string, start int, vars map[string]sourceSwatch) ([]sourceSwatch, string) {
 	switch {
 	case token.Type == chroma.NameAttribute:
 		return matches, strings.ToLower(strings.TrimSpace(token.Value))
@@ -161,10 +235,11 @@ func htmlSwatches(matches []sourceSwatch, token chroma.Token, attr string, start
 			if err == nil {
 				offset := 0
 				for part := next(); part != chroma.EOF; part = next() {
+					recordCSSVariable(vars, part, value, offset, start)
 					before := len(matches)
 					matches = appendCSSSwatch(matches, part, value, offset)
 					if len(matches) > before {
-						matches[before].start += start
+						matches[before].shift(start)
 					}
 					offset += len(part.Value)
 				}
@@ -176,7 +251,7 @@ func htmlSwatches(matches []sourceSwatch, token chroma.Token, attr string, start
 				if matches[0].width != len(trimmed) {
 					return matches[:0], ""
 				}
-				matches[0].start = start + strings.Index(value, trimmed)
+				matches[0].shift(start + strings.Index(value, trimmed))
 			}
 		}
 	}
@@ -185,12 +260,15 @@ func htmlSwatches(matches []sourceSwatch, token chroma.Token, attr string, start
 
 type colorSwatch struct {
 	colorSpan
-	lineEnd int
+	lineEnd  int
+	edit     colorLiteral
+	variable string
 }
 
 type swatchCell struct {
 	image.Point
 	color tcell.Color
+	edit  colorLiteral
 }
 
 func (v *syntaxView) drawColorSwatches(screen *editorScreen) {
@@ -220,7 +298,7 @@ func (v *syntaxView) drawColorSwatches(screen *editorScreen) {
 			beforeCursor++
 		}
 		point := image.Pt(x+s.start-column+inserted, y+s.row-row)
-		v.drawnSwatches = append(v.drawnSwatches, swatchCell{point, s.color})
+		v.drawnSwatches = append(v.drawnSwatches, swatchCell{point, s.color, s.edit})
 		inserted++
 	}
 

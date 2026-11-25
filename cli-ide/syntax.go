@@ -3,6 +3,8 @@ package main
 import (
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"sync/atomic"
 
 	"github.com/alecthomas/chroma/v2"
@@ -16,6 +18,7 @@ import (
 type syntaxView struct {
 	*tview.TextArea
 	definitionSelection *[2]int
+	sessionOffset       *[2]int
 	app                 *tview.Application
 	filename            string
 	lexer               chroma.Lexer
@@ -26,12 +29,15 @@ type syntaxView struct {
 	spans               []colorSpan
 	swatches            []colorSwatch
 	drawnSwatches       []swatchCell
+	onColorPick         func(colorLiteral)
 	marks               []colorSpan
 	columns             int
 	columnsRevision     uint64
 	columnsTabSize      int
 	scrollDrag          bool
 	scrollX             int
+	lines               int
+	lineRevision        uint64
 }
 
 type colorSpan struct {
@@ -53,6 +59,7 @@ func (v *syntaxView) invalidate() {
 	v.valid = false
 	v.spans = nil
 	v.swatches = nil
+	v.drawnSwatches = v.drawnSwatches[:0]
 }
 
 type editorScreen struct {
@@ -85,6 +92,11 @@ func (s *editorScreen) HideCursor() {
 func (v *syntaxView) Draw(screen tcell.Screen) {
 	v.drawnSwatches = v.drawnSwatches[:0]
 	left, _, width, _ := v.GetRect()
+	if rev := v.revision.Load(); v.lines == 0 || v.lineRevision != rev {
+		v.lines, v.lineRevision = strings.Count(v.GetText(), "\n")+1, rev
+	}
+	gutter := min(max(3, len(strconv.Itoa(v.lines))+1), max(0, width-12))
+	v.SetBorderPadding(0, 0, gutter, 0)
 	// A selected tab can start left of the visible columns in tview's TextArea.
 	editor := &editorScreen{Screen: screen, left: left, right: left + width}
 	screen = editor
@@ -93,7 +105,23 @@ func (v *syntaxView) Draw(screen tcell.Screen) {
 	if r := v.definitionSelection; r != nil {
 		v.definitionSelection = nil
 		v.Select(r[0], r[1])
+		if offset := v.sessionOffset; offset != nil {
+			v.sessionOffset = nil
+			v.SetOffset(min(offset[0], v.lines-1), offset[1])
+			v.scrollColumns(0)
+		}
 		v.TextArea.Draw(screen)
+	}
+	x, y, width, height := v.GetInnerRect()
+	row, column := v.GetOffset()
+	lineStyle := tcell.StyleDefault.Background(panel)
+	for n := 0; n < height && gutter > 0; n++ {
+		for col := x - gutter; col < x; col++ {
+			screen.SetContent(col, y+n, ' ', nil, lineStyle)
+		}
+		if line := row + n + 1; line <= v.lines {
+			tview.Print(screen, strconv.Itoa(line), x-gutter, y+n, gutter-1, tview.AlignRight, muted)
+		}
 	}
 	v.drawColumnBar(screen)
 	if v.lexer == nil || v.GetTextLength() == 0 {
@@ -123,8 +151,6 @@ func (v *syntaxView) Draw(screen tcell.Screen) {
 			}()
 		}
 	}
-	x, y, width, height := v.GetInnerRect()
-	row, column := v.GetOffset()
 	base := v.GetTextStyle()
 	first := sort.Search(len(v.spans), func(i int) bool { return v.spans[i].row >= row })
 	for _, s := range v.spans[first:] {
@@ -197,6 +223,7 @@ func syntaxSpans(lexer chroma.Lexer, source string, tabSize int, stale func() bo
 	web := html || lexer.Config().Name == "CSS"
 	var attr string
 	var matches []sourceSwatch
+	vars := map[string]sourceSwatch{}
 	clusters := uniseg.NewGraphemes(source)
 	row, column, consumed, tokenEnd := 0, 0, 0, 0
 	firstOnRow := 0
@@ -211,9 +238,10 @@ func syntaxSpans(lexer chroma.Lexer, source string, tabSize int, stale func() bo
 			return nil, nil
 		}
 		if web {
+			recordCSSVariable(vars, token, source, tokenEnd, 0)
 			matches = appendCSSSwatch(matches[:0], token, source, tokenEnd)
 			if html {
-				matches, attr = htmlSwatches(matches, token, attr, tokenEnd)
+				matches, attr = htmlSwatches(matches, token, attr, tokenEnd, vars)
 			}
 		}
 		tokenEnd += len(token.Value)
@@ -223,7 +251,7 @@ func syntaxSpans(lexer chroma.Lexer, source string, tabSize int, stale func() bo
 			if len(matches) > 0 && matches[0].start <= consumed {
 				match := matches[0]
 				if match.start == consumed {
-					swatches = append(swatches, colorSwatch{colorSpan{row, column, column + match.width, match.color}, 0})
+					swatches = append(swatches, colorSwatch{colorSpan: colorSpan{row, column, column + match.width, match.color}, edit: match.edit, variable: match.variable})
 				}
 				matches = matches[1:]
 			}
@@ -250,5 +278,19 @@ func syntaxSpans(lexer chroma.Lexer, source string, tabSize int, stale func() bo
 		}
 	}
 	finishRow()
-	return spans, swatches
+	resolved := swatches[:0]
+	for _, chip := range swatches {
+		if chip.variable != "" {
+			seen := map[string]bool{}
+			for name := chip.variable; name != "" && !seen[name]; {
+				seen[name] = true
+				value := vars[name]
+				chip.color, chip.edit, name = value.color, value.edit, value.variable
+			}
+		}
+		if chip.edit.end > 0 {
+			resolved = append(resolved, chip)
+		}
+	}
+	return spans, resolved
 }

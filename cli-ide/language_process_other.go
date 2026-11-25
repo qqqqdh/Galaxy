@@ -5,3 +5,5 @@ package main
 import "os/exec"
 
 func isolateLanguageServer(*exec.Cmd) {}
+
+func isolateTestCommand(*exec.Cmd) {}
