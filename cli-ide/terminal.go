@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
@@ -15,19 +16,27 @@ import (
 	"github.com/rivo/tview"
 )
 
-const terminalInputChunk = 32 * 1024
+const (
+	terminalInputChunk    = 32 * 1024
+	terminalOutputChunk   = 8 * 1024
+	terminalOutputBatch   = 32 * 1024
+	terminalFrameInterval = 24 * time.Millisecond
+)
 
 type shellPane struct {
 	*tview.Box
-	app     *tview.Application
-	term    *vt.Emulator
-	file    *os.File
-	process *os.Process
-	input   chan []byte
-	notify  func(string)
-	message string
-	scroll  int
-	claude  bool
+	app           *tview.Application
+	worker        *terminalWorker
+	file          *os.File
+	process       *os.Process
+	input         chan []byte
+	notify        func(string)
+	visible       func() bool
+	redraw        func(*shellPane)
+	screen        func() *inputScreen
+	message       string
+	width, height int
+	claude        bool
 }
 
 func (s *shellPane) start(dir string) {
@@ -50,36 +59,55 @@ func (s *shellPane) run(dir string, job task, onExit func(error)) {
 		s.message = fmt.Sprintf("%s 시작 실패 · %v", job.Name, err)
 		return
 	}
-	em := vt.NewEmulator(w, h)
-	s.term, s.file, s.message = em, file, ""
+	s.file, s.message = file, ""
+	s.width, s.height = w, h
 	s.claude = args[0] == "claude"
 	s.process = cmd.Process
 	s.input = make(chan []byte, 128)
-	go relayTerminalInput(file, em, s.input, func() {
+	worker := newTerminalWorker(w, h, file, s.input, func() {
 		_ = cmd.Process.Kill()
 		_ = file.Close()
 	})
+	s.worker = worker
+	worker.setVisible(s.visible())
 	go func() {
-		buf := make([]byte, 8192)
 		for {
-			n, err := file.Read(buf)
-			if n > 0 {
-				s.app.QueueUpdateDraw(func() {
-					if s.file == file {
-						_, _ = em.Write(buf[:n])
+			select {
+			case <-worker.stopped:
+				return
+			case <-worker.draw:
+				s.app.QueueUpdate(func() {
+					if s.worker == worker {
+						s.redraw(s)
 					}
 				})
 			}
+		}
+	}()
+	output := make(chan []byte, 8)
+	go func() {
+		defer close(output)
+		buf := make([]byte, terminalOutputChunk)
+		for {
+			n, err := file.Read(buf)
+			if n > 0 {
+				output <- bytes.Clone(buf[:n])
+			}
 			if err != nil {
-				break
+				return
 			}
 		}
+	}()
+	go func() {
+		relayTerminalOutput(output, func(batch []byte) {
+			worker.write(batch)
+		})
 		err := cmd.Wait()
 		s.app.QueueUpdateDraw(func() {
 			if s.file == file {
 				if onExit != nil {
 					go file.Close()
-					_ = em.Close()
+					_ = worker.inputPipe.Close()
 					s.file, s.process, s.input = nil, nil, nil
 					onExit(err)
 				} else {
@@ -92,6 +120,32 @@ func (s *shellPane) run(dir string, job task, onExit func(error)) {
 	}()
 }
 
+// Draw the first output promptly, then group reads that arrive during the next frame.
+func relayTerminalOutput(output <-chan []byte, publish func([]byte)) {
+	var nextFrame time.Time
+	batch := make([]byte, 0, terminalOutputBatch)
+	for first := range output {
+		if wait := time.Until(nextFrame); wait > 0 {
+			time.Sleep(wait)
+		}
+		batch = append(batch[:0], first...)
+	collect:
+		for len(batch)+terminalOutputChunk <= terminalOutputBatch {
+			select {
+			case more, ok := <-output:
+				if !ok {
+					break collect
+				}
+				batch = append(batch, more...)
+			default:
+				break collect
+			}
+		}
+		nextFrame = time.Now().Add(terminalFrameInterval)
+		publish(batch)
+	}
+}
+
 func (s *shellPane) close() {
 	if file, process := s.file, s.process; file != nil {
 		s.file, s.process, s.input = nil, nil, nil
@@ -100,11 +154,10 @@ func (s *shellPane) close() {
 		}
 		go file.Close()
 	}
-	if s.term != nil {
-		_ = s.term.Close()
-		s.term = nil
+	if s.worker != nil {
+		s.worker.close()
+		s.worker = nil
 	}
-	s.scroll = 0
 	s.claude = false
 }
 
@@ -150,36 +203,34 @@ func (s *shellPane) Draw(screen tcell.Screen) {
 	if w < 2 || h < 1 {
 		return
 	}
-	em := s.term
-	if em == nil {
+	worker := s.worker
+	if worker == nil {
 		tview.Print(screen, tview.Escape(s.message), x, y, w, tview.AlignLeft, muted)
 		return
 	}
-	if w != em.Width() || h != em.Height() {
-		em.Resize(w, h)
-		if s.file != nil {
-			_ = pty.Setsize(s.file, &pty.Winsize{Cols: uint16(w), Rows: uint16(h)})
+	if w != s.width || h != s.height {
+		file, width, height := s.file, w, h
+		if worker.enqueue(func(worker *terminalWorker) {
+			worker.term.Resize(width, height)
+			if file != nil {
+				_ = pty.Setsize(file, &pty.Winsize{Cols: uint16(width), Rows: uint16(height)})
+			}
+			worker.capture()
+		}) {
+			s.width, s.height = w, h
 		}
 	}
-	history := em.ScrollbackLen()
-	if em.IsAltScreen() {
-		history = 0
-	}
-	s.scroll = min(history, s.scroll)
-	cellAt := func(col, row int) *uv.Cell {
-		offset := row - s.scroll
-		if offset < 0 {
-			return em.ScrollbackCellAt(col, history+offset)
-		}
-		return em.CellAt(col, offset)
-	}
+	worker.framesMu.RLock()
+	defer worker.framesMu.RUnlock()
+	frame := &worker.frame
+	w, h = min(w, frame.width), min(h, frame.height)
 	var link terminalLink
 	if s.claude {
-		link = findClaudeAuthorization(w, h, cellAt)
+		link = findClaudeAuthorization(w, h, frame.cellAt)
 	}
 	for row := 0; row < h; row++ {
 		for col := 0; col < w; col++ {
-			cell := cellAt(col, row)
+			cell := frame.cellAt(col, row)
 			if cell == nil || cell.Width == 0 || cell.Width > w-col {
 				continue
 			}
@@ -195,10 +246,31 @@ func (s *shellPane) Draw(screen tcell.Screen) {
 			screen.SetContent(x+col, y+row, r[0], r[1:], style)
 		}
 	}
-	if s.file != nil && s.scroll == 0 && s.HasFocus() && !em.CursorHidden() {
-		p := em.CursorPosition()
+	if s.file != nil && s.HasFocus() && frame.showCursor && frame.cursor.X < w && frame.cursor.Y < h {
+		p := frame.cursor
 		screen.ShowCursor(x+p.X, y+p.Y)
 	}
+}
+
+func (i *ide) redrawTerminal(pane *shellPane) {
+	if !pane.visible() {
+		return
+	}
+	screen := i.inputScreen
+	if screen == nil || i.dialog || i.acceptHint != nil {
+		i.app.ForceDraw()
+		return
+	}
+	_, _, w, h := i.pages.GetRect()
+	if width, height := screen.Size(); w != width || h != height {
+		i.app.ForceDraw()
+		return
+	}
+	if pane.HasFocus() {
+		screen.HideCursor()
+	}
+	pane.Draw(screen)
+	screen.Show()
 }
 
 var terminalKeys = map[tcell.Key]rune{
@@ -229,8 +301,16 @@ func (s *shellPane) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) 
 		if e.Modifiers()&tcell.ModAlt != 0 {
 			key.Mod |= uv.ModAlt
 		}
-		s.scroll = 0
-		s.term.SendKey(key)
+		if !s.send(func(worker *terminalWorker) {
+			worker.resetScroll()
+			worker.term.SendKey(key)
+		}) {
+			return
+		}
+		if screen := s.screen(); screen != nil {
+			// The worker paints after leaving scrollback or receiving the prompt echo.
+			screen.skipFrame = true
+		}
 	})
 }
 func (s *shellPane) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
@@ -243,18 +323,22 @@ func (s *shellPane) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, fu
 		}
 		x, y, w, h := s.GetInnerRect()
 		col, row := e.Position()
-		if s.term == nil || col < x || row < y || col >= x+w || row >= y+h {
+		if s.worker == nil || col < x || row < y || col >= x+w || row >= y+h {
 			return action == tview.MouseLeftDown, nil
 		}
 		mouse := uv.Mouse{X: col - x, Y: row - y, Button: uv.MouseLeft}
 		switch action {
 		case tview.MouseLeftDown, tview.MouseLeftUp:
-			if s.file != nil && s.scroll == 0 {
-				if action == tview.MouseLeftDown {
-					s.term.SendMouse(uv.MouseClickEvent(mouse))
-				} else {
-					s.term.SendMouse(uv.MouseReleaseEvent(mouse))
-				}
+			if s.file != nil {
+				s.send(func(worker *terminalWorker) {
+					if worker.scroll == 0 {
+						if action == tview.MouseLeftDown {
+							worker.term.SendMouse(uv.MouseClickEvent(mouse))
+						} else {
+							worker.term.SendMouse(uv.MouseReleaseEvent(mouse))
+						}
+					}
+				})
 			}
 		case tview.MouseScrollUp, tview.MouseScrollDown:
 			mouse.Button = uv.MouseWheelUp
@@ -262,11 +346,15 @@ func (s *shellPane) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, fu
 			if action == tview.MouseScrollDown {
 				mouse.Button, delta = uv.MouseWheelDown, -3
 			}
-			if history := s.term.ScrollbackLen(); !s.term.IsAltScreen() && history > 0 {
-				s.scroll = max(0, min(history, s.scroll+delta))
-			} else if s.file != nil {
-				s.term.SendMouse(uv.MouseWheelEvent(mouse))
-			}
+			running := s.file != nil
+			s.send(func(worker *terminalWorker) {
+				if history := worker.history(); history > 0 {
+					worker.scroll = max(0, min(history, worker.scroll+delta))
+					worker.capture()
+				} else if running {
+					worker.term.SendMouse(uv.MouseWheelEvent(mouse))
+				}
+			})
 		default:
 			return false, nil
 		}
@@ -284,14 +372,27 @@ func (s *shellPane) PasteHandler() func(string, func(tview.Primitive)) {
 			s.notify("터미널 입력이 많습니다 · 붙여넣을 내용을 나눠 주세요")
 			return
 		}
-		s.scroll = 0
-		s.term.Paste(text)
+		s.send(func(worker *terminalWorker) {
+			worker.resetScroll()
+			worker.term.Paste(text)
+		})
 	})
+}
+
+func (s *shellPane) send(command func(*terminalWorker)) bool {
+	if s.worker.enqueue(command) {
+		return true
+	}
+	s.notify("터미널 입력 대기열이 가득 찼습니다")
+	return false
 }
 
 func (i *ide) makeDock() *tview.Flex {
 	i.problemList = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)
-	i.shell = &shellPane{Box: tview.NewBox(), app: i.app, notify: i.notify}
+	i.shell = &shellPane{Box: tview.NewBox(), app: i.app, notify: i.notify, redraw: i.redrawTerminal, screen: func() *inputScreen { return i.inputScreen }, visible: func() bool {
+		page, _ := i.dock.GetFrontPage()
+		return i.fullTerminal || i.dockOpen && page == "터미널"
+	}}
 	i.dock = tview.NewPages().AddPage("문제", i.problemList, true, true).AddPage("터미널", i.shell, true, false)
 	i.dock.AddPage("검색", i.makeSearchPane(), true, false)
 	i.changeList = tview.NewList().ShowSecondaryText(false).SetHighlightFullLine(true)

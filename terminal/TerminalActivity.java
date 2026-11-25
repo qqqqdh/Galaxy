@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.graphics.Insets;
 import android.net.Uri;
@@ -56,6 +57,7 @@ public class TerminalActivity extends Activity {
     private LinearLayout layout, workArea, terminalArea, tabButtons;
     private FrameLayout tabContent;
     private HorizontalScrollView tabStrip;
+    private Button closeTabButton;
     private FileTransfer fileTransfer;
     private BrowserPane preview;
     private Bundle previewState;
@@ -82,6 +84,10 @@ public class TerminalActivity extends Activity {
             tabStrip.setBackgroundColor(0xff191e28);
             tabStrip.setHorizontalScrollBarEnabled(false);
             tabButtons = new LinearLayout(this);
+            tabButtons.addView(tabButton("+", "새 Ubuntu 셸", this::newTab));
+            closeTabButton = tabButton("×", "현재 셸 닫기", () -> requestTabClose(active));
+            closeTabButton.setVisibility(View.GONE);
+            tabButtons.addView(closeTabButton);
             tabStrip.addView(tabButtons);
             terminalArea.addView(tabStrip, new LinearLayout.LayoutParams(-1, -2));
         }
@@ -110,6 +116,7 @@ public class TerminalActivity extends Activity {
         }
         TerminalPane tab = new TerminalPane("셸 " + nextTab++);
         tabs.add(tab);
+        if (tabButtons != null) addTabButton(tab);
         tabContent.addView(tab, new FrameLayout.LayoutParams(-1, -1));
         selectTab(tab);
     }
@@ -117,12 +124,21 @@ public class TerminalActivity extends Activity {
     private void selectTab(TerminalPane tab) {
         if (active != null && active != tab) {
             active.finishInput();
-            active.setVisibility(View.INVISIBLE);
+            active.setVisibility(View.GONE);
+            if (active.button != null) active.button.setSelected(false);
         }
         active = tab;
         active.setVisibility(View.VISIBLE);
         active.focusInput();
-        updateTabs();
+        if (tab.button != null) {
+            tab.button.setSelected(true);
+            tabStrip.post(() -> {
+                if (tab == active && (tab.button.getLeft() < tabStrip.getScrollX()
+                        || tab.button.getRight() > tabStrip.getScrollX() + tabStrip.getWidth())) {
+                    tabStrip.smoothScrollTo(tab.button.getLeft(), 0);
+                }
+            });
+        }
     }
 
     private Button tabButton(String label, String description, Runnable action) {
@@ -136,46 +152,28 @@ public class TerminalActivity extends Activity {
         return button;
     }
 
-    private void updateTabs() {
-        if (tabButtons == null) return;
-        tabButtons.removeAllViews();
-        Button current = null;
-        for (TerminalPane tab : tabs) {
-            Button button = tabButton(tab.name, tab.name, () -> selectTab(tab));
-            button.setSelected(tab == active);
-            if (tab == active) {
-                current = button;
-                button.setTextColor(0xff9eddd1);
-            }
-            button.setOnLongClickListener(view -> {
-                EditText name = new EditText(this);
-                name.setSingleLine(true);
-                name.setText(tab.name);
-                new AlertDialog.Builder(this).setTitle("셸 이름").setView(name)
-                        .setNegativeButton("취소", null).setPositiveButton("저장", (dialog, which) -> {
-                            String value = name.getText().toString().trim();
-                            if (!value.isEmpty()) {
-                                tab.name = value;
-                                updateTabs();
-                            }
-                        }).show();
-                return true;
-            });
-            tabButtons.addView(button);
-        }
-        tabButtons.addView(tabButton("+", "새 Ubuntu 셸", this::newTab));
-        if (tabs.size() > 1) {
-            tabButtons.addView(tabButton("×", "현재 셸 닫기", () -> requestTabClose(active)));
-        }
-        if (current != null) {
-            Button selected = current;
-            tabStrip.post(() -> {
-                if (selected.getLeft() < tabStrip.getScrollX() ||
-                        selected.getRight() > tabStrip.getScrollX() + tabStrip.getWidth()) {
-                    tabStrip.smoothScrollTo(selected.getLeft(), 0);
-                }
-            });
-        }
+    private void addTabButton(TerminalPane tab) {
+        Button button = tabButton(tab.name, tab.name, () -> selectTab(tab));
+        button.setTextColor(new ColorStateList(new int[][] { { android.R.attr.state_selected }, {} },
+                new int[] { 0xff9eddd1, button.getCurrentTextColor() }));
+        button.setOnLongClickListener(view -> {
+            EditText name = new EditText(this);
+            name.setSingleLine(true);
+            name.setText(tab.name);
+            new AlertDialog.Builder(this).setTitle("셸 이름").setView(name)
+                    .setNegativeButton("취소", null).setPositiveButton("저장", (dialog, which) -> {
+                        String value = name.getText().toString().trim();
+                        if (!value.isEmpty()) {
+                            tab.name = value;
+                            button.setText(value);
+                            button.setContentDescription(value);
+                        }
+                    }).show();
+            return true;
+        });
+        tab.button = button;
+        tabButtons.addView(button, tabs.size() - 1);
+        if (tabs.size() == 2) closeTabButton.setVisibility(View.VISIBLE);
     }
 
     private void requestTabClose(TerminalPane tab) {
@@ -186,10 +184,12 @@ public class TerminalActivity extends Activity {
                     tab.dispose();
                     tabContent.removeView(tab);
                     tabs.remove(index);
+                    tabButtons.removeView(tab.button);
+                    if (tabs.size() == 1) closeTabButton.setVisibility(View.GONE);
                     if (active == tab) {
                         active = null;
                         selectTab(tabs.get(Math.min(index, tabs.size() - 1)));
-                    } else updateTabs();
+                    }
                 }).show();
     }
 
@@ -283,12 +283,14 @@ public class TerminalActivity extends Activity {
 
     private final class TerminalPane extends FrameLayout {
         private String name;
+        private Button button;
         private WebView browser;
         private EditorInput editorInput;
         private int editorMode;
         private AlertDialog ubuntuSetup;
         private volatile PtySession session;
         private final ArrayDeque<CountDownLatch> outputAcks = new ArrayDeque<>();
+        private final StringBuilder pendingOutput = new StringBuilder();
 
         TerminalPane(String name) {
             super(TerminalActivity.this);
@@ -316,6 +318,10 @@ public class TerminalActivity extends Activity {
                     return asset(request);
                 }
 
+                @Override public void onPageFinished(WebView view, String url) {
+                    updateTerminalVisibility(isShown() && getWindowVisibility() == View.VISIBLE);
+                }
+
                 @Override public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
                     dispose();
                     TextView message = new TextView(TerminalActivity.this);
@@ -339,6 +345,15 @@ public class TerminalActivity extends Activity {
             });
             addView(editorInput, new FrameLayout.LayoutParams(1, 1));
             browser.loadUrl(ORIGIN + "index.html");
+        }
+
+        @Override public void onVisibilityAggregated(boolean visible) {
+            super.onVisibilityAggregated(visible);
+            updateTerminalVisibility(visible);
+        }
+
+        private void updateTerminalVisibility(boolean visible) {
+            evaluate("typeof setTerminalVisible === 'function' && setTerminalVisible(" + visible + ")");
         }
 
         private void finishInput() {
@@ -403,17 +418,21 @@ public class TerminalActivity extends Activity {
                         runOnUiThread(() -> evaluate("shellStarted()"));
                     }
 
-                    @Override public void output(byte[] bytes, int length) throws InterruptedException {
+                    @Override public void output(byte[] bytes, int length, boolean echoErases) throws InterruptedException {
                         String base64 = Base64.encodeToString(bytes, 0, length, Base64.NO_WRAP);
                         CountDownLatch ack = new CountDownLatch(1);
                         CountDownLatch oldest;
+                        boolean schedule;
                         synchronized (outputAcks) {
                             // Allow short redraw bursts while keeping at most four 16 KiB reads in flight.
                             outputAcks.addLast(ack);
                             oldest = outputAcks.size() >= 4 ? outputAcks.peekFirst() : null;
+                            schedule = pendingOutput.length() == 0;
+                            pendingOutput.append("receiveOutput(").append(JSONObject.quote(base64))
+                                    .append(',').append(echoErases).append(");");
                         }
                         lastOutput = ack;
-                        runOnUiThread(() -> evaluate("receiveOutput(" + JSONObject.quote(base64) + ")"));
+                        if (schedule) runOnUiThread(TerminalPane.this::flushOutput);
                         if (oldest != null) oldest.await();
                     }
 
@@ -454,6 +473,15 @@ public class TerminalActivity extends Activity {
 
         private void evaluate(String script) {
             if (browser != null) browser.evaluateJavascript(script, null);
+        }
+
+        private void flushOutput() {
+            String script;
+            synchronized (outputAcks) {
+                script = pendingOutput.toString();
+                pendingOutput.setLength(0);
+            }
+            if (!script.isEmpty()) evaluate(script);
         }
 
         private boolean validSize(int cols, int rows) {
@@ -623,6 +651,7 @@ public class TerminalActivity extends Activity {
             synchronized (outputAcks) {
                 for (CountDownLatch ack : outputAcks) ack.countDown();
                 outputAcks.clear();
+                pendingOutput.setLength(0);
             }
             if (browser != null) {
                 ((FrameLayout) browser.getParent()).removeView(browser);

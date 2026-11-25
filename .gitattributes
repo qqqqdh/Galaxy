@@ -1,5 +1,6 @@
 *.go text eol=lf
 *.sh text eol=lf
+cli-ide/patches/terminal-scrolling.patch text eol=lf whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
 terminal/galaxy-bashrc text eol=lf
 terminal/galaxy-cli text eol=lf
 terminal/galaxy-w text eol=lf

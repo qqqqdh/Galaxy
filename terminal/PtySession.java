@@ -14,7 +14,7 @@ import static android.system.OsConstants.*;
 final class PtySession implements AutoCloseable {
     interface Listener {
         void started();
-        void output(byte[] bytes, int length) throws InterruptedException;
+        void output(byte[] bytes, int length, boolean echoErases) throws InterruptedException;
         void ended(String message);
     }
 
@@ -45,6 +45,7 @@ final class PtySession implements AutoCloseable {
     private static native int[] spawn(String directory, String[] arguments, String[] environment, int cols, int rows)
             throws IOException;
     private static native void resize(int fd, int cols, int rows) throws IOException;
+    private static native boolean echoErases(int fd);
     private static native void reap(int fd, int pid);
 
     private final ParcelFileDescriptor[] wake;
@@ -160,7 +161,7 @@ final class PtySession implements AutoCloseable {
                 if ((pty.revents & POLLIN) != 0) {
                     int length = Os.read(pty.fd, buffer, 0, buffer.length);
                     if (length <= 0) return;
-                    listener.output(buffer, length);
+                    listener.output(buffer, length, echoErases(master.getFd()));
                 } else if ((pty.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
                     return;
                 }

@@ -65,7 +65,7 @@ try {
     }
     & "$tools/aapt2.exe" compile --dir terminal/res -o "$cache/browser-res.zip"
     & "$tools/aapt2.exe" link -I $platform --manifest $manifest -A "$cache/assets" `
-        "$cache/browser-res.zip" -o "$cache/base.apk" --version-code 22 --version-name 0.4.16
+        "$cache/browser-res.zip" -o "$cache/base.apk" --version-code 23 --version-name 0.5.0
     Copy-Item -Force "$cache/base.apk" "$cache/packed.apk"
     $archive = [IO.Compression.ZipFile]::Open([IO.Path]::GetFullPath("$cache/packed.apk", $root), 'Update')
     try {

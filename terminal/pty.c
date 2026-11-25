@@ -116,6 +116,14 @@ JNIEXPORT void JNICALL Java_dev_galaxy_terminal_PtySession_resize(
     if (ioctl(master, TIOCSWINSZ, &size) < 0) io_error(env, "TIOCSWINSZ");
 }
 
+JNIEXPORT jboolean JNICALL Java_dev_galaxy_terminal_PtySession_echoErases(
+        JNIEnv *env __attribute__((unused)), jclass type __attribute__((unused)), jint master) {
+    struct termios tty;
+    const tcflag_t flags = ICANON | ECHO | ECHOE | ECHOPRT;
+    return tcgetattr(master, &tty) == 0 && (tty.c_iflag & IUTF8) &&
+            (tty.c_lflag & flags) == (ICANON | ECHO | ECHOE);
+}
+
 JNIEXPORT void JNICALL Java_dev_galaxy_terminal_PtySession_reap(
         JNIEnv *env __attribute__((unused)), jclass type __attribute__((unused)), jint master, jint child) {
     finish(master, child);

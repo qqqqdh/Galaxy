@@ -27,6 +27,7 @@ const term = new Terminal({
   fontSize: 15,
   lineHeight: 1.15,
   scrollback: 5000,
+  scrollSensitivity: 1.3,
   screenReaderMode: true,
   linkHandler: { activate: openTerminalLink },
   theme: {
@@ -66,6 +67,17 @@ let settling;
 let editorCommit;
 let imeInputPending = false;
 let noticeTimer;
+let terminalVisible = true;
+
+function setTerminalVisible(visible) {
+  if (terminalVisible === visible) return;
+  terminalVisible = visible;
+  // Keep parsing PTY output and answering terminal queries while xterm's renderer is paused.
+  term.element.style.display = visible ? '' : 'none';
+  term.options.screenReaderMode = visible;
+  term.options.cursorBlink = visible;
+  if (visible) fit.fit();
+}
 
 if (Android.isUbuntuSession()) {
   document.querySelector('h1').textContent = 'Ubuntu 24.04';
@@ -96,8 +108,80 @@ function notice(message) {
   noticeTimer = setTimeout(() => { notification.hidden = true; }, 2200);
 }
 
-function receiveOutput(base64) {
-  term.write(Uint8Array.from(atob(base64), character => character.charCodeAt(0)), () => Android.outputConsumed());
+const eraseEcho = '\b \b';
+let outputWritten = Promise.resolve();
+let echoTail = new Uint8Array();
+
+function writeOutput(data) {
+  return new Promise(resolve => term.write(data, resolve));
+}
+
+function takeEchoTail() {
+  const tail = echoTail;
+  echoTail = new Uint8Array();
+  return tail;
+}
+
+function renderErases(count) {
+  const buffer = term.buffer.active;
+  const line = buffer.getLine(buffer.baseY + buffer.cursorY);
+  let column = buffer.cursorX;
+  let left = count;
+  if (buffer.type === 'normal') {
+    while (left > 0 && column > 0) {
+      column -= column > 1 && line?.getCell(column - 1)?.getWidth() === 0 ? 2 : 1;
+      left--;
+    }
+  }
+  const width = buffer.cursorX - column;
+  if (width === count - left) return eraseEcho.repeat(count);
+  // Linux ECHOE emits one backspace-space-backspace per code point, even for two-cell glyphs.
+  return `\x1b[${column + 1}G\x1b[${width}X` + eraseEcho.repeat(left);
+}
+
+async function writeEraseEcho(bytes) {
+  if (echoTail.length) {
+    const tail = takeEchoTail();
+    const joined = new Uint8Array(tail.length + bytes.length);
+    joined.set(tail);
+    joined.set(bytes, tail.length);
+    bytes = joined;
+  }
+  let start = 0;
+  for (let i = bytes.indexOf(8); i !== -1; i = bytes.indexOf(8, i + 1)) {
+    if (i + 1 < bytes.length && bytes[i + 1] !== 32) continue;
+    if (i + 2 >= bytes.length) {
+      const tail = echoTail = bytes.slice(i);
+      // A standalone backspace must still be displayed if no more output arrives.
+      setTimeout(() => {
+        outputWritten = outputWritten.then(() => echoTail === tail ? writeOutput(takeEchoTail()) : undefined);
+      }, 40);
+      if (start < i) await writeOutput(bytes.subarray(start, i));
+      return;
+    }
+    if (bytes[i + 2] !== 8) continue;
+    if (start < i) await writeOutput(bytes.subarray(start, i));
+    let end = i + 3;
+    while (bytes[end] === 8 && bytes[end + 1] === 32 && bytes[end + 2] === 8) end += 3;
+    await writeOutput(renderErases((end - i) / 3));
+    start = end;
+    i = end - 1;
+  }
+  if (start < bytes.length) await writeOutput(bytes.subarray(start));
+}
+
+function receiveOutput(base64, echoErases = false) {
+  const decoded = atob(base64);
+  const bytes = new Uint8Array(decoded.length);
+  for (let index = 0; index < decoded.length; index++) bytes[index] = decoded.charCodeAt(index);
+  outputWritten = outputWritten.then(async () => {
+    if (echoErases) await writeEraseEcho(bytes);
+    else {
+      if (echoTail.length) await writeOutput(takeEchoTail());
+      await writeOutput(bytes);
+    }
+    Android.outputConsumed();
+  });
 }
 
 function shellStarted() {
@@ -123,6 +207,7 @@ function shellEnded(message) {
   control.setAttribute('aria-pressed', 'false');
   shellStatus.textContent = '종료';
   shellStatus.dataset.running = 'false';
+  if (echoTail.length) term.write(takeEchoTail());
   term.write(`\r\n[${message}]\r\n`);
   restart.hidden = false;
 }
@@ -140,7 +225,7 @@ term.onKey(({ domEvent }) => {
   if (domEvent.key === 'Tab' || domEvent.key.startsWith('Arrow')) domEvent.preventDefault();
   if (liveEditor && (domEvent.key === 'Enter' || domEvent.key === 'Backspace')) domEvent.preventDefault();
 });
-new ResizeObserver(() => fit.fit()).observe(host);
+new ResizeObserver(() => { if (terminalVisible) fit.fit(); }).observe(host);
 function sendInput(data) {
   const accepted = Android.send(data);
   if (accepted && !data.startsWith('\x1b[200~') && /[\r\n]/.test(data)) {
@@ -186,7 +271,7 @@ function resetLiveRange() {
 }
 function updateInputMode() {
   const mode = !running ? 0 : liveEditor ? 2 : inGalaxyIDE ? 1 : (!atPrompt || inEditorScreen()) ? 3 : 0;
-  if (mode === 3 && !nativeTerminal) term.focus();
+  if (terminalVisible && mode === 3 && !nativeTerminal) term.focus();
   if (nativeTerminal && mode !== 3) showDraft('');
   nativeTerminal = mode === 3;
   Android.editorMode?.(mode);

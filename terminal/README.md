@@ -4,7 +4,7 @@
 
 ## 설치와 사용
 
-1. [Galaxy Terminal 0.4.16 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.16)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
+1. [Galaxy Terminal 0.5.0 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.5.0)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
 2. Galaxy Terminal을 열고 물리 키보드를 사용하거나, 상단 **키보드**를 눌러 한국어가 설정된 Android 키보드를 엽니다.
 3. `echo '한글 입력 확인'`을 입력합니다. `pwd`로 현재 디렉터리, `stty size`로 터미널 크기를 확인할 수 있습니다.
 

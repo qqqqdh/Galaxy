@@ -10,7 +10,7 @@ clang="$sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
 xterm="$root/terminal/node_modules/@xterm"
 cache="$root/.build-cache/terminal"
 proot="$cache/ubuntu-build"
-version=${GALAXY_TERMINAL_VERSION:-0.4.16}
+version=${GALAXY_TERMINAL_VERSION:-0.5.0}
 preview=${GALAXY_PREVIEW:-0}
 
 if [[ ! -x "$clang" || ! -x "$tools/aapt2" || ! -f "$platform" ]]; then
@@ -80,7 +80,7 @@ cp "$proot/"{libproot.so,libproot-loader.so} "$stage/lib/arm64-v8a"
 
 "$tools/aapt2" compile --dir terminal/res -o "$stage/resources.zip"
 "$tools/aapt2" link -I "$platform" --manifest "$manifest" -A "$stage/assets" "$stage/resources.zip" \
-    -o "$stage/packed.apk" --version-code 22 --version-name "$version"
+    -o "$stage/packed.apk" --version-code 23 --version-name "$version"
 (cd "$stage" && zip -q -0 -r packed.apk classes.dex lib)
 "$tools/zipalign" -f -P 16 4 "$stage/packed.apk" "$stage/aligned.apk"
 "$tools/zipalign" -c -P 16 4 "$stage/aligned.apk"

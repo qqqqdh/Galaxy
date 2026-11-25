@@ -9,7 +9,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-const version = "0.2.0"
+const version = "0.2.1"
 
 func main() {
 	showVersion := flag.Bool("version", false, "버전 표시")

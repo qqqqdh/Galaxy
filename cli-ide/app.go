@@ -24,12 +24,13 @@ var (
 )
 
 type openDocument struct {
-	draft  *draft
-	disk   *document
-	editor *tview.TextArea
-	syntax *syntaxView
-	button *tview.Button
-	id     string
+	draft    *draft
+	disk     *document
+	editor   *tview.TextArea
+	syntax   *syntaxView
+	button   *tview.Button
+	id       string
+	modified bool
 }
 
 func (d *openDocument) dirty() bool {
@@ -180,7 +181,13 @@ func newIDE(root string, config config) *ide {
 	i.pages.AddPage("terminal-full", tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(fullBar, 1, 0, false).AddItem(i.shell, 0, 1, true), true, false)
 	i.app.SetRoot(i.pages, true).EnableMouse(true).EnablePaste(true)
-	i.app.SetInputCapture(i.handleKey)
+	i.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if s := i.inputScreen; s != nil && !i.dialog && !i.fullTerminal && i.acceptHint == nil && i.active != nil &&
+			i.active.editor.HasFocus() && !i.active.editor.HasSelection() && event.Key() == tcell.KeyRune && event.Modifiers() == tcell.ModNone {
+			s.retainFrame = true
+		}
+		return i.handleKey(event)
+	})
 	i.app.SetMouseCapture(i.hintMouse)
 	var editorTitle string
 	i.app.SetAfterDrawFunc(func(screen tcell.Screen) {
@@ -205,13 +212,30 @@ func newIDE(root string, config config) *ide {
 		if i.inputScreen != nil && i.inputScreen.skipFrame {
 			return true
 		}
+		width, height := screen.Size()
+		if s := i.inputScreen; s != nil {
+			if s.retainFrame {
+				if width == s.width && height == s.height && !i.dialog && i.acceptHint == nil {
+					i.updateStatus()
+					i.tabs.Draw(screen)
+					i.editors.Draw(screen)
+					bar.Draw(screen)
+					if page, _ := i.dock.GetFrontPage(); page == "문제" && i.dockOpen {
+						i.dock.Draw(screen)
+					}
+					i.status.Draw(screen)
+					return true
+				}
+				s.Screen.Clear()
+			}
+			s.width, s.height = width, height
+		}
 		if i.acceptHint != nil && i.active != nil {
 			_, a, b := i.active.editor.GetSelection()
 			if !i.active.editor.HasFocus() || a != i.hintOffset || b != a {
 				i.clearHints()
 			}
 		}
-		width, height := screen.Size()
 		focused := i.assistant.HasFocus()
 		if assistantFocused && !focused {
 			i.refreshDocuments()
@@ -274,6 +298,11 @@ func newIDE(root string, config config) *ide {
 			i.body.ResizeItem(i.tree, treeWidth, 0)
 		}
 		i.updateStatus()
+		for _, pane := range []*shellPane{i.shell, i.assistant} {
+			if pane.worker != nil {
+				pane.worker.setVisible(pane.visible())
+			}
+		}
 		return false
 	})
 	return i
@@ -331,7 +360,8 @@ func (i *ide) addDocument(disk *document) {
 
 func (i *ide) updateTab(d *openDocument) {
 	label := d.name()
-	if d.dirty() {
+	d.modified = d.dirty()
+	if d.modified {
 		label += " *"
 	}
 	d.button.SetLabel(label)
@@ -405,7 +435,7 @@ func (i *ide) updateStatus() {
 		path = relative
 	}
 	state := "저장됨"
-	if d.dirty() || !d.disk.exists {
+	if d.modified || !d.disk.exists {
 		state = "미저장"
 	}
 	if i.message != "" {
@@ -444,14 +474,6 @@ func (i *ide) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 	if i.shell.HasFocus() || i.assistant.HasFocus() {
-		if i.inputScreen != nil && i.assistant.HasFocus() && i.assistant.claude &&
-			i.assistant.file != nil && i.assistant.scroll == 0 && event.Modifiers() == tcell.ModNone {
-			switch event.Key() {
-			case tcell.KeyRune, tcell.KeyBackspace, tcell.KeyBackspace2:
-				// The Claude PTY paints the changed prompt when it echoes the edit.
-				i.inputScreen.skipFrame = true
-			}
-		}
 		if event.Key() == tcell.KeyCtrlC {
 			return tcell.NewEventKey(tcell.KeyCtrlC, 0, tcell.ModNone)
 		}

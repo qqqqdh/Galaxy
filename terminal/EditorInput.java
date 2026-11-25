@@ -2,6 +2,7 @@ package dev.galaxy.terminal;
 
 import android.content.Context;
 import android.text.Editable;
+import android.text.TextUtils;
 import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.KeyEvent;
@@ -9,6 +10,7 @@ import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputConnectionWrapper;
+import android.view.inputmethod.TextAttribute;
 import android.widget.EditText;
 
 /** Android owns the composing span and selection. The terminal displays the edits. */
@@ -110,6 +112,24 @@ final class EditorInput extends EditText {
         resetContext();
     }
 
+    private void submitLine() {
+        finishContext();
+        listener.enter();
+    }
+
+    private boolean submitImeNewline(CharSequence text) {
+        if (!commitOnly || !hasFocus() || !(TextUtils.equals(text, "\n") ||
+                TextUtils.equals(text, "\r") || TextUtils.equals(text, "\r\n"))) return false;
+        // commitText replaces the composing span. Keep the syllable when the IME only sends Enter.
+        submitLine();
+        return true;
+    }
+
+    private void flushImeCommit(CharSequence text) {
+        flushCommitted();
+        if (commitOnly && text.length() > 0 && text.charAt(text.length() - 1) == '\n') resetContext();
+    }
+
     @Override public InputConnection onCreateInputConnection(EditorInfo attrs) {
         InputConnection target = super.onCreateInputConnection(attrs);
         if (target == null) return null;
@@ -119,10 +139,30 @@ final class EditorInput extends EditText {
                 flushCommitted();
                 return accepted;
             }
-            @Override public boolean commitText(CharSequence text, int cursor) {
-                boolean accepted = super.commitText(text, cursor);
+            @Override public boolean setComposingText(CharSequence text, int cursor, TextAttribute attribute) {
+                boolean accepted = super.setComposingText(text, cursor, attribute);
                 flushCommitted();
                 return accepted;
+            }
+            @Override public boolean commitText(CharSequence text, int cursor) {
+                if (submitImeNewline(text)) return true;
+                boolean accepted = super.commitText(text, cursor);
+                if (accepted) flushImeCommit(text);
+                return accepted;
+            }
+            @Override public boolean commitText(CharSequence text, int cursor, TextAttribute attribute) {
+                if (submitImeNewline(text)) return true;
+                boolean accepted = super.commitText(text, cursor, attribute);
+                if (accepted) flushImeCommit(text);
+                return accepted;
+            }
+            @Override public boolean performEditorAction(int action) {
+                if (commitOnly && hasFocus() && (action == EditorInfo.IME_ACTION_UNSPECIFIED ||
+                        action == EditorInfo.IME_ACTION_NONE || action == EditorInfo.IME_ACTION_DONE)) {
+                    submitLine();
+                    return true;
+                }
+                return super.performEditorAction(action);
             }
             @Override public boolean finishComposingText() {
                 boolean accepted = super.finishComposingText();
@@ -145,10 +185,7 @@ final class EditorInput extends EditText {
         int key = event.getKeyCode();
         if (commitOnly && event.hasNoModifiers() &&
                 (key == KeyEvent.KEYCODE_ENTER || key == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                finishContext();
-                listener.enter();
-            }
+            if (event.getAction() == KeyEvent.ACTION_DOWN) submitLine();
             return true;
         }
         boolean command = event.isCtrlPressed() || event.isAltPressed() || event.isMetaPressed() ||

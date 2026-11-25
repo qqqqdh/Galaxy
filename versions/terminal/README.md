@@ -2,6 +2,7 @@
 
 | 버전 | 기록 | 다운로드 |
 | --- | --- | --- |
+| 0.5.0 | [변경 기록](0.5.0/) | [GitHub 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.5.0) |
 | 0.4.16 | [변경 기록](0.4.16/) | [GitHub 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.16) |
 | 0.4.15 | [변경 기록](0.4.15/) | [GitHub 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.15) |
 | 0.4.14 | [변경 기록](0.4.14/) | [GitHub 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.14) |

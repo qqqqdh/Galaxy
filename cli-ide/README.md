@@ -165,10 +165,11 @@ Go 1.24.2 이상에서 빌드합니다. 라이브러리는 `go.mod`와 `go.sum`�
 pwsh -NoProfile -File cli-ide/build.ps1
 ```
 
-Linux의 직접 빌드와 검사는 다음과 같습니다.
+Linux에서는 Go와 Git으로 배포판과 같은 터미널 라이브러리 패치를 적용해 검사하고 빌드할 수 있습니다.
 
 ```bash
 cd cli-ide
-go test -timeout 45s ./...
-go build -o galaxy-ide .
+overlay=$(go run terminal-overlay.go)
+go test -overlay "$overlay" -timeout 90s ./...
+go build -overlay "$overlay" -o galaxy-ide .
 ```

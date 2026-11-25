@@ -54,6 +54,28 @@ async function main() {
         assert.equal(await page.evaluate(() => calls.keyboard), 1);
 
         await page.evaluate(() => {
+            window.hiddenShell = { renders: 0, sizes: calls.sizes.length, acks: calls.acks };
+            term.onRender(() => hiddenShell.renders++);
+            setTerminalVisible(false);
+        });
+        // xterm pauses rendering once its screen is outside the viewport.
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        await page.evaluate(() => {
+            hiddenShell.renders = 0;
+            receiveOutput(btoa('\r\nbackground-shell\x1b[6n'));
+        });
+        await page.waitForFunction(() => calls.acks === hiddenShell.acks + 1);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        assert.equal(await page.evaluate(() => hiddenShell.renders), 0);
+        assert.equal(await page.evaluate(() => calls.sizes.length), await page.evaluate(() => hiddenShell.sizes));
+        assert.match(await page.evaluate(() => calls.input.at(-1)), /^\x1b\[\d+;\d+R$/);
+        await page.evaluate(() => { setTerminalVisible(true); term.focus(); });
+        await page.locator('.xterm-rows').getByText('background-shell').waitFor();
+        assert(await page.evaluate(() => term.options.screenReaderMode && term.options.cursorBlink));
+        await page.reload();
+        await page.getByText('실행 중').waitFor();
+
+        await page.evaluate(() => {
             window.navigationEvents = [];
             host.addEventListener('keydown', event => {
                 if (event.key === 'Tab' || event.key.startsWith('Arrow')) {
@@ -321,13 +343,62 @@ async function main() {
         assert(await page.locator('.ide-draft').isHidden());
         await page.evaluate(() => { delete Android.sendEditorKey; });
 
+        await page.evaluate(() => { calls.input.length = 0; });
+        for (const syllable of ['ㅎ', '하', '한']) {
+            await page.evaluate(value => nativeTerminalDraft(value), syllable);
+            assert.equal(await page.locator('.ide-draft:visible').innerText(), syllable);
+        }
+        assert.deepEqual(await page.evaluate(() => calls.input), [], 'The composing syllable is visible before Enter');
+        await page.evaluate(() => {
+            nativeEditorEdit('', '한');
+            nativeTerminalDraft('');
+            sendTerminalKey('Enter');
+            nativeEditorEdit('한', '한');
+        });
+        assert.deepEqual(await page.evaluate(() => calls.input), ['한', '\r'], 'PTY receives one line without a Space key');
+        assert(await page.locator('.ide-draft').isHidden());
+
+        const erase = '\b \b';
+        async function echo(chunks, echoErases = true) {
+            return page.evaluate(async ({ chunks, echoErases }) => {
+                for (const chunk of chunks) receiveOutput(chunk, echoErases);
+                await outputWritten;
+                const buffer = term.buffer.active;
+                return [buffer.getLine(buffer.baseY + buffer.cursorY).translateToString(true).trimEnd(), buffer.cursorX];
+            }, { chunks: chunks.map(chunk => Buffer.from(chunk).toString('base64')), echoErases });
+        }
+        const clear = '\x1b[2J\x1b[H';
+        assert.deepEqual(await echo([clear + '아니 ', erase, '\b ', '\b']), ['아', 2],
+            'A split erase echo clears the committed syllable and returns the cursor to its starting cell');
+        assert.deepEqual(await echo([erase]), ['', 0], 'The last committed Hangul syllable disappears');
+        assert.deepEqual(await echo([clear + 'x아니' + erase.repeat(3)]), ['', 0],
+            'One burst erases both wide and narrow characters');
+        assert.deepEqual(await echo([clear + 'abc' + erase]), ['ab', 2]);
+        assert.equal((await echo([clear + '아니' + erase], false))[1], 3, 'Raw-mode output uses ordinary backspace');
+        assert.deepEqual(await echo([clear + '아니' + erase.repeat(2) + '가']), ['가', 2],
+            'Replacement input starts at the erased text');
+        const rightEdge = await page.evaluate(() => term.cols - 2);
+        assert.deepEqual(await echo([clear + `\x1b[${rightEdge + 1}G아` + erase]), ['', rightEdge],
+            'A wide glyph at the right edge is erased without wrapping');
+        const outputAcks = await page.evaluate(() => calls.acks);
         const lines = Array.from({ length: 100 }, (_, i) => `\r\n줄 ${i}`).join('');
         await page.evaluate(data => receiveOutput(data), Buffer.from(lines).toString('base64'));
-        await page.waitForFunction(() => calls.acks === 3 && term.buffer.active.baseY > 0);
-        const before = await page.evaluate(() => term.buffer.active.viewportY);
+        await page.waitForFunction(acks => calls.acks === acks + 1 && term.buffer.active.baseY > 0, outputAcks);
         await page.mouse.move(screen.x + 40, screen.y + 45);
-        await page.mouse.wheel(0, -121);
-        await page.waitForFunction(previous => term.buffer.active.viewportY < previous, before);
+        const sensitivity = await page.evaluate(() => term.options.scrollSensitivity);
+        async function scrollDistance(sensitivity) {
+            const before = await page.evaluate(value => {
+                term.options.scrollSensitivity = value;
+                term.scrollToBottom();
+                return term.buffer.active.baseY;
+            }, sensitivity);
+            await page.waitForFunction(bottom => term.buffer.active.viewportY === bottom, before);
+            await page.mouse.wheel(0, -121);
+            await page.waitForFunction(bottom => term.buffer.active.viewportY < bottom, before);
+            return before - await page.evaluate(() => term.buffer.active.viewportY);
+        }
+        const defaultDistance = await scrollDistance(1);
+        assert(await scrollDistance(sensitivity) > defaultDistance, 'The same trackpad gesture should scroll farther');
         const originalSize = await page.evaluate(() => [term.cols, term.rows]);
         await page.setViewportSize({ width: 360, height: 640 });
         await page.waitForFunction(([cols, rows]) => term.cols < cols && term.rows < rows, originalSize);
