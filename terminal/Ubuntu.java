@@ -8,6 +8,7 @@ import android.os.Build;
 import android.os.Process;
 import android.util.Log;
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -69,12 +70,15 @@ final class Ubuntu {
             try {
                 Path root = install(context, progress);
                 Path temporary = Files.createDirectories(context.getCacheDir().toPath().resolve("ubuntu-runtime"));
-                Files.write(temporary.resolve("resolv.conf"), dnsConfiguration(context).getBytes(StandardCharsets.US_ASCII));
-                copyAsset(context, "galaxy-bashrc", temporary.resolve("galaxy-bashrc"));
-                Path w = Files.createDirectories(temporary.resolve("galaxy-bin")).resolve("w");
-                copyAsset(context, "galaxy-w", w);
-                if (!w.toFile().setExecutable(true, true)) throw new IOException("w 실행 권한 설정 실패");
-                copyAsset(context, "galaxy-ubuntu-setup.sh", temporary.resolve("galaxy-ubuntu-setup.sh"));
+                byte[] dns = dnsConfiguration(context).getBytes(StandardCharsets.US_ASCII);
+                replaceRuntimeFile(new ByteArrayInputStream(dns), temporary.resolve("resolv.conf"), false);
+                copyAsset(context, "galaxy-bashrc", temporary.resolve("galaxy-bashrc"), false);
+                Path bin = Files.createDirectories(temporary.resolve("galaxy-bin"));
+                copyAsset(context, "galaxy-w", bin.resolve("w"), true);
+                for (String command : new String[] { "galaxy-open", "galaxy-share", "galaxy-doctor" }) {
+                    copyAsset(context, "galaxy-cli", bin.resolve(command), true);
+                }
+                copyAsset(context, "galaxy-ubuntu-setup.sh", temporary.resolve("galaxy-ubuntu-setup.sh"), false);
                 Files.createDirectories(root.resolve(".l2s"));
                 Path saved = accountFile(context);
                 if (!configured(context)) {
@@ -122,8 +126,9 @@ final class Ubuntu {
             "-b", FileTransfer.directory(context) + ":/mnt/galaxy-transfer!",
             "-b", temporary.resolve("galaxy-ubuntu-setup.sh") + ":/etc/galaxy-ubuntu-setup.sh!",
             "/usr/bin/env", "-i", "HOME=" + home, "USER=" + user, "LOGNAME=" + user, "SHELL=/bin/bash",
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/run/galaxy-bin:/usr/bin:/sbin:/bin", "TMPDIR=/tmp",
-            "TERM=xterm-256color", "LANG=" + locale, "GALAXY_HOSTNAME=" + computer, "GALAXY_UTMP_WINDOW=" + window));
+            "PATH=" + home + "/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/run/galaxy-bin:/usr/bin:/sbin:/bin", "TMPDIR=/tmp",
+            "TERM=xterm-256color", "LANG=" + locale, "GALAXY_ANDROID=1", "GALAXY_HOSTNAME=" + computer,
+            "GALAXY_UTMP_WINDOW=" + window));
         arguments.addAll(Arrays.asList(guestCommand));
         PtySession.Command command = new PtySession.Command(root.toFile(), arguments.toArray(new String[0]),
                 "PATH=/system/bin:/system/xbin", "ANDROID_ROOT=/system", "ANDROID_DATA=/data",
@@ -329,9 +334,23 @@ final class Ubuntu {
         }
     }
 
-    private static void copyAsset(Context context, String name, Path destination) throws IOException {
+    private static void copyAsset(Context context, String name, Path destination, boolean executable) throws IOException {
         try (InputStream source = context.getAssets().open(name)) {
-            Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
+            replaceRuntimeFile(source, destination, executable);
+        }
+    }
+
+    private static void replaceRuntimeFile(InputStream source, Path destination, boolean executable) throws IOException {
+        Path stage = Files.createTempFile(destination.getParent(), ".galaxy-runtime-", ".tmp");
+        try {
+            Files.copy(source, stage, StandardCopyOption.REPLACE_EXISTING);
+            if (executable && !stage.toFile().setExecutable(true, true)) {
+                throw new IOException(destination.getFileName() + " 실행 권한 설정 실패");
+            }
+            // Existing Ubuntu tabs can still be reading these bind-mounted files.
+            Files.move(stage, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(stage);
         }
     }
 

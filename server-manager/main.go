@@ -16,7 +16,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const version = "0.1.0"
+const version = "0.1.1"
 
 type manager struct {
 	*ui.Screen
@@ -26,6 +26,8 @@ type manager struct {
 	log, link, message *tview.TextView
 	currentID, logs    string
 	labels             []string
+	diagnosis          *tview.TextView
+	probe              portProbe
 }
 
 func main() {
@@ -76,7 +78,7 @@ func run() error {
 	m := &manager{
 		Screen: ui.New(), root: root, state: state, profiles: profiles,
 		list: ui.List(), log: tview.NewTextView(), link: tview.NewTextView().SetDynamicColors(true).SetWrap(false),
-		message: tview.NewTextView(),
+		message: tview.NewTextView(), diagnosis: tview.NewTextView(),
 	}
 	m.list.SetBorder(true).SetTitle(" Galaxy 서버 ")
 	m.log.SetBorder(true).SetTitle(" 최근 로그 ")
@@ -97,6 +99,7 @@ func run() error {
 		AddItem(m.list, 0, 2, true).
 		AddItem(m.log, 0, 3, false).
 		AddItem(m.link, 1, 0, false).
+		AddItem(m.diagnosis, 2, 0, false).
 		AddItem(bar, 1, 0, false).
 		AddItem(m.message, 2, 0, false)
 	m.SetMain(layout, m.list)
@@ -177,10 +180,12 @@ func (m *manager) refreshDetails(i int) {
 		m.currentID, m.logs = "", ""
 		m.log.SetText("서버를 추가하면 여기에 출력이 표시됩니다.")
 		m.link.SetText("")
+		m.diagnosis.SetText("")
 		return
 	}
 	p := m.profiles[i]
-	text := m.runFor(p).logs()
+	run := m.runFor(p)
+	text := run.logs()
 	if m.currentID != p.ID || m.logs != text {
 		if m.currentID != p.ID {
 			m.log.ScrollToEnd()
@@ -201,6 +206,11 @@ func (m *manager) refreshDetails(i int) {
 	} else {
 		m.link.SetText("")
 	}
+	line := "프로세스 · " + ui.Text(run.status()) + "\n" + m.portStatus(p.URL)
+	if portConflict(text) {
+		line += " · 로그에 포트 충돌 메시지가 있습니다"
+	}
+	m.diagnosis.SetText(line)
 }
 
 func (m *manager) edit(index int) {

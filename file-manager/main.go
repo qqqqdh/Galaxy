@@ -13,7 +13,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-const version = "0.1.1"
+const version = "0.1.2"
 
 type fileManager struct {
 	*ui.Screen
@@ -52,6 +52,7 @@ func main() {
 		ui.Action{Label: "상위", Run: m.up},
 		ui.Action{Label: "작업", Run: m.actions},
 		ui.Action{Label: "폴더", Run: m.locations},
+		ui.Action{Label: "휴지통", Run: m.trash},
 		ui.Action{Label: "종료", Run: m.quit},
 	)
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -296,20 +297,35 @@ func (m *fileManager) actions() {
 			}},
 		)
 		if base, ok := archiveBase(name); ok && entry.Type().IsRegular() {
+			if strings.HasSuffix(name, projectBackupSuffix) {
+				base = strings.TrimSuffix(name, projectBackupSuffix)
+			}
 			initial = append(initial, ui.Action{Label: "압축 풀기", Run: func() {
 				m.Prompt("압축 풀기", "새 폴더", base, func(folder string) error {
 					if err := validName(folder); err != nil {
 						return err
 					}
 					target := filepath.Join(m.dir, folder)
-					m.perform("압축 풀기", folder, func() error { return extractArchive(path, target) }, nil)
+					m.perform("압축 풀기", folder, func() error {
+						if strings.HasSuffix(name, projectBackupSuffix) {
+							return restoreBackup(path, target)
+						}
+						return extractArchive(path, target)
+					}, nil)
 					return nil
 				})
 			}})
 		}
-		initial = append(initial, ui.Action{Label: "삭제", Run: func() {
-			m.Confirm(ui.Text(name)+" 항목을 영구 삭제할까요?", func() {
-				m.perform("삭제", "", func() error { return os.RemoveAll(path) }, nil)
+		if entry.IsDir() {
+			initial = append(initial, ui.Action{Label: "프로젝트 백업", Run: func() { m.backup(path) }})
+		}
+		initial = append(initial, ui.Action{Label: "휴지통으로 이동", Run: func() {
+			m.Confirm(ui.Text(name)+" 항목을 휴지통으로 옮길까요?", func() {
+				m.perform("휴지통으로 이동", "", func() error { return trashEntry(path) }, func() {
+					if m.source == path {
+						m.source = ""
+					}
+				})
 			})
 		}})
 	}
@@ -317,6 +333,7 @@ func (m *fileManager) actions() {
 		initial = append([]ui.Action{{Label: "여기에 붙여넣기", Run: m.paste}}, initial...)
 	}
 	initial = append(initial,
+		ui.Action{Label: "현재 폴더 백업", Run: func() { m.backup(m.dir) }},
 		ui.Action{Label: "새 폴더", Run: func() {
 			m.Prompt("새 폴더", "이름", "", func(folder string) error {
 				if err := validName(folder); err != nil {

@@ -7,6 +7,7 @@
         android:networkSecurityConfig="@xml/browser_network"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name=".TerminalActivity" android:exported="true"
+            android:enableOnBackInvokedCallback="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:windowSoftInputMode="adjustResize|stateAlwaysHidden">
             <intent-filter>
@@ -15,11 +16,10 @@
             </intent-filter>
         </activity>
         <activity android:name=".TerminalActivity$UbuntuActivity" android:exported="false" android:launchMode="singleTop"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
-            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
-        <activity android:name=".BrowserActivity" android:exported="false" android:launchMode="singleTop"
             android:enableOnBackInvokedCallback="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+        <provider android:name=".SharedFileProvider" android:authorities="dev.galaxy.terminal.shared"
+            android:exported="false" android:grantUriPermissions="true" />
     </application>
 </manifest>

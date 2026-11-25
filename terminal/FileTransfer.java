@@ -3,12 +3,14 @@ package dev.galaxy.terminal;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.util.Base64;
 import android.webkit.MimeTypeMap;
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,6 +20,7 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -33,6 +36,7 @@ final class FileTransfer {
     private final Consumer<String> notice;
     private String exportName;
     private boolean transferring;
+    private boolean sharePending;
 
     FileTransfer(Activity activity, Consumer<String> notice, Bundle state) {
         this.activity = activity;
@@ -55,7 +59,7 @@ final class FileTransfer {
     }
 
     void show() {
-        if (transferring) {
+        if (transferring || sharePending || exportName != null) {
             notice.accept("파일을 전송하는 중입니다.");
             return;
         }
@@ -74,7 +78,7 @@ final class FileTransfer {
         try (DirectoryStream<Path> entries = Files.newDirectoryStream(directory(activity))) {
             for (Path entry : entries) {
                 String name = entry.getFileName().toString();
-                if (safeName(name) && !name.startsWith(".galaxy-")
+                if (safeName(name) && (!name.startsWith(".galaxy-") || name.endsWith(".galaxy-backup.tar.gz"))
                         && Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
                     names.add(name);
                 }
@@ -90,12 +94,82 @@ final class FileTransfer {
         Collections.sort(names);
         new AlertDialog.Builder(activity).setTitle("저장할 파일")
                 .setItems(names.toArray(new String[0]), (dialog, choice) -> {
-                    exportName = names.get(choice);
-                    String type = mimeType(exportName);
-                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
-                            .setType(type).putExtra(Intent.EXTRA_TITLE, exportName);
-                    if (!launch(intent, EXPORT)) exportName = null;
+                    openExport(names.get(choice));
                 }).show();
+    }
+
+    private void openExport(String name) {
+        if (exportName != null || transferring || sharePending) return;
+        exportName = name;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .setType(mimeType(name)).putExtra(Intent.EXTRA_TITLE, name);
+        if (!launch(intent, EXPORT)) exportName = null;
+    }
+
+    void request(String request) {
+        if (transferring || sharePending || exportName != null) return;
+        String[] fields = request.split(";", -1);
+        try {
+            if (fields.length == 2 && "export".equals(fields[0])) {
+                String name = decodeName(fields[1]);
+                if (name.endsWith(".galaxy-backup.tar.gz")
+                        && Files.isRegularFile(directory(activity).resolve(name), LinkOption.NOFOLLOW_LINKS)) {
+                    openExport(name);
+                }
+            } else if (fields.length == 3 && "share".equals(fields[0])
+                    && fields[1].matches("\\.galaxy-share-[0-9A-Za-z]{12}")) {
+                String name = decodeName(fields[2]);
+                Path source = directory(activity).resolve(fields[1]);
+                if (!Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS)) return;
+                sharePending = true;
+                AlertDialog dialog = new AlertDialog.Builder(activity).setTitle("Android로 파일 공유")
+                        .setMessage(name).setNegativeButton("취소", null)
+                        .setPositiveButton("공유", (view, which) -> share(source, name)).create();
+                dialog.setOnDismissListener(view -> sharePending = false);
+                dialog.show();
+            }
+        } catch (IOException | IllegalArgumentException error) {
+            notice.accept("공유하거나 저장할 파일을 찾을 수 없습니다.");
+        }
+    }
+
+    private static String decodeName(String encoded) {
+        String name = new String(Base64.decode(encoded, Base64.DEFAULT), StandardCharsets.UTF_8);
+        if (!safeName(name) || name.getBytes(StandardCharsets.UTF_8).length > 255) {
+            throw new IllegalArgumentException("파일 이름");
+        }
+        return name;
+    }
+
+    private void share(Path source, String name) {
+        transferring = true;
+        new Thread(() -> {
+            Uri uri = null;
+            try {
+                uri = SharedFileProvider.stage(activity, source, name);
+                Files.deleteIfExists(source);
+            } catch (IOException | RuntimeException ignored) {
+                // The handler below reports errors that prevented staging the file.
+            }
+            Uri attachment = uri;
+            activity.runOnUiThread(() -> {
+                transferring = false;
+                if (activity.isFinishing() || activity.isDestroyed()) return;
+                if (attachment == null) {
+                    notice.accept("공유 파일을 준비할 수 없습니다.");
+                    return;
+                }
+                Intent intent = new Intent(Intent.ACTION_SEND).setType(mimeType(name));
+                intent.putExtra(Intent.EXTRA_STREAM, attachment);
+                intent.setClipData(ClipData.newUri(activity.getContentResolver(), name, attachment));
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                try {
+                    activity.startActivity(Intent.createChooser(intent, "파일 공유"));
+                } catch (ActivityNotFoundException | SecurityException error) {
+                    notice.accept("Android 공유 메뉴를 열 수 없습니다.");
+                }
+            });
+        }, "galaxy-file-share").start();
     }
 
     private boolean launch(Intent intent, int request) {
@@ -183,7 +257,7 @@ final class FileTransfer {
         return "Android에 저장함 · " + name;
     }
 
-    private static boolean safeName(String name) {
+    static boolean safeName(String name) {
         if (name == null || name.isEmpty() || name.equals(".") || name.equals("..")
                 || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0) return false;
         for (int i = 0; i < name.length(); i++) {
@@ -198,7 +272,7 @@ final class FileTransfer {
         while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
     }
 
-    private static String mimeType(String name) {
+    static String mimeType(String name) {
         int dot = name.lastIndexOf('.');
         if (dot >= 0 && dot + 1 < name.length()) {
             String extension = name.substring(dot + 1).toLowerCase(Locale.ROOT);

@@ -39,6 +39,10 @@ const term = new Terminal({
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
 term.loadAddon(new WebLinksAddon.WebLinksAddon(openTerminalLink));
+term.parser.registerOscHandler(778, request => {
+  if (typeof Android.fileRequest === 'function') Android.fileRequest(request);
+  return true;
+});
 term.open(host);
 term.textarea.setAttribute('aria-label', '터미널 입력');
 term.textarea.setAttribute('autocorrect', 'off');

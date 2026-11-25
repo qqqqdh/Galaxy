@@ -4,7 +4,7 @@ Galaxy Terminal의 Ubuntu 셸에서 파일과 폴더를 터치나 키보드로 �
 
 ## 설치
 
-[0.1.1 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/file-manager-v0.1.1)에서 갤럭시 탭용 `galaxy-files-linux-arm64`를 받으세요. Linux x86-64에서는 `galaxy-files-linux-amd64`를 받습니다.
+[0.1.2 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/file-manager-v0.1.2)에서 갤럭시 탭용 `galaxy-files-linux-arm64`를 받으세요. Linux x86-64에서는 `galaxy-files-linux-amd64`를 받습니다.
 
 ```bash
 mkdir -p ~/.local/bin
@@ -18,7 +18,10 @@ Ubuntu 셸에서 명령을 찾지 못하면 `export PATH="$HOME/.local/bin:$PATH
 
 ## 사용법
 
-파일이나 폴더를 터치하거나 선택 후 Enter를 눌러 작업 목록을 엽니다. 복사 또는 이동을 선택한 뒤 대상 폴더에서 **여기에 붙여넣기**를 누르세요. 이름 변경, 새 폴더, 숨김 파일 표시, 영구 삭제도 **작업**에서 선택합니다. ZIP, TAR.GZ, TGZ는 새 폴더에 풀며 같은 이름의 기존 항목은 덮어쓰지 않습니다. GitHub 소스 TAR.GZ의 PAX 전역 헤더를 건너뜁니다. 압축 파일 안의 링크와 특수 파일은 지원하지 않습니다.
+파일이나 폴더를 터치하거나 선택 후 Enter를 눌러 작업 목록을 엽니다. 복사 또는 이동을 선택한 뒤 대상 폴더에서 **여기에 붙여넣기**를 누르세요. 이름 변경, 새 폴더, 숨김 파일 표시도 **작업**에서 선택합니다. ZIP, TAR.GZ, TGZ는 새 폴더에 풀며 같은 이름의 기존 항목은 덮어쓰지 않습니다. GitHub 소스 TAR.GZ의 PAX 전역 헤더를 건너뜁니다.
+
+- **휴지통으로 이동**은 항목을 보관합니다. 아래 **휴지통**에서 원래 위치에 복원하거나 영구 삭제할 수 있습니다. 원래 경로에 같은 이름의 항목이 있다면 이름을 바꾼 뒤 복원하세요.
+- **프로젝트 백업**과 **현재 폴더 백업**은 숨김 파일과 폴더 안의 Git 기록을 포함한 `.galaxy-backup.tar.gz`를 만듭니다. **Android에 백업**을 선택하면 시스템 파일 선택기에서 저장 위치를 고릅니다. 백업을 다시 가져오고 **압축 풀기**를 선택하면 새 폴더에 복원합니다. 프로젝트 밖의 Git 기록이나 외부 파일을 가리키는 링크가 있는 경우 백업이 중단됩니다.
 
 - **F2**로 선택한 폴더를 열고 **Backspace**로 상위 폴더로 이동합니다.
 - **Ctrl+C**로 복사할 항목을 선택하고 **Ctrl+V**로 붙여넣습니다. **F5**로 목록을 갱신합니다.

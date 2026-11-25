@@ -10,7 +10,7 @@ clang="$sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
 xterm="$root/terminal/node_modules/@xterm"
 cache="$root/.build-cache/terminal"
 proot="$cache/ubuntu-build"
-version=${GALAXY_TERMINAL_VERSION:-0.4.15}
+version=${GALAXY_TERMINAL_VERSION:-0.4.16}
 preview=${GALAXY_PREVIEW:-0}
 
 if [[ ! -x "$clang" || ! -x "$tools/aapt2" || ! -f "$platform" ]]; then
@@ -32,6 +32,7 @@ if [[ $preview == 1 ]]; then
     manifest="$stage/AndroidManifest.xml"
     sed -e 's/package="dev.galaxy.terminal"/package="dev.galaxy.terminal.preview"/' \
         -e 's/android:label="Galaxy Terminal"/android:label="Galaxy Terminal Preview"/' \
+        -e 's/android:authorities="dev.galaxy.terminal.shared"/android:authorities="dev.galaxy.terminal.preview.shared"/' \
         -e 's/android:name="\./android:name="dev.galaxy.terminal./g' \
         terminal/AndroidManifest.xml > "$manifest"
     apk=Galaxy-Terminal-Preview.apk
@@ -52,7 +53,7 @@ fi
 
 bash terminal/fetch-proot.sh
 cp terminal/ui/{index.html,terminal.css,terminal.js} "$stage/assets"
-for profile in galaxy.mkshrc galaxy-bashrc galaxy-w galaxy-ubuntu-setup.sh ubuntu-locales.txt; do
+for profile in galaxy.mkshrc galaxy-bashrc galaxy-w galaxy-cli galaxy-ubuntu-setup.sh ubuntu-locales.txt; do
     sed 's/\r$//' "terminal/$profile" > "$stage/assets/$profile"
 done
 cp "$proot/"{PRoot-COPYING.txt,PRoot-source.tar.gz,GPL-3.txt,talloc-LGPL.txt} terminal/PRoot-NOTICE.txt "$stage/assets"
@@ -62,7 +63,7 @@ for module in xterm addon-fit addon-web-links; do
 done
 
 javac -encoding UTF-8 --release 8 -classpath "$platform" -d "$stage/classes" \
-    terminal/{TerminalActivity,EditorInput,PtySession,Ubuntu,UbuntuSetup,BrowserActivity,WebAddress,FileTransfer}.java
+    terminal/{TerminalActivity,EditorInput,PtySession,Ubuntu,UbuntuSetup,BrowserPane,WebAddress,FileTransfer,SharedFileProvider}.java
 jar cf "$stage/classes.jar" -C "$stage/classes" .
 "$tools/d8" --lib "$platform" --min-api 26 --output "$stage" "$stage/classes.jar"
 
@@ -79,7 +80,7 @@ cp "$proot/"{libproot.so,libproot-loader.so} "$stage/lib/arm64-v8a"
 
 "$tools/aapt2" compile --dir terminal/res -o "$stage/resources.zip"
 "$tools/aapt2" link -I "$platform" --manifest "$manifest" -A "$stage/assets" "$stage/resources.zip" \
-    -o "$stage/packed.apk" --version-code 21 --version-name "$version"
+    -o "$stage/packed.apk" --version-code 22 --version-name "$version"
 (cd "$stage" && zip -q -0 -r packed.apk classes.dex lib)
 "$tools/zipalign" -f -P 16 4 "$stage/packed.apk" "$stage/aligned.apk"
 "$tools/zipalign" -c -P 16 4 "$stage/aligned.apk"

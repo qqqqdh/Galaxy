@@ -4,7 +4,7 @@
 
 ## 설치와 사용
 
-1. [Galaxy Terminal 0.4.15 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.15)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
+1. [Galaxy Terminal 0.4.16 릴리스](https://github.com/qqqqdh/Galaxy/releases/tag/terminal-v0.4.16)에서 `Galaxy-Terminal.apk`를 받아 Android 8 이상 기기에 설치합니다.
 2. Galaxy Terminal을 열고 물리 키보드를 사용하거나, 상단 **키보드**를 눌러 한국어가 설정된 Android 키보드를 엽니다.
 3. `echo '한글 입력 확인'`을 입력합니다. `pwd`로 현재 디렉터리, `stty size`로 터미널 크기를 확인할 수 있습니다.
 
@@ -19,6 +19,8 @@
 2. 초기 설정에는 인터넷이 필요합니다. 앱이 공식 Ubuntu Base 이미지 약 30MB를 검증해 설치한 뒤 `sudo`와 로캘·시간대 패키지를 설치합니다. 설치가 끝나면 생성한 일반 계정의 홈 디렉터리에서 Bash가 열립니다. [Canonical Ubuntu Base](https://cdimage.ubuntu.com/ubuntu-base/releases/24.04.5/release/)
 3. `cat /etc/os-release`로 버전을 확인합니다. 패키지를 설치하려면 `sudo apt update`와 `sudo apt install nano`처럼 실행합니다. `sudo`가 요청하면 초기 설정에서 정한 Ubuntu 비밀번호를 입력합니다.
 4. **‹**로 돌아가면 Ubuntu 셸이 닫힙니다. 다음에 **Ubuntu**를 열면 같은 계정으로 시작합니다. 이전 root 전용 버전에서 업데이트할 때도 초기 설정 화면이 한 번 열립니다. 이전 패키지와 파일은 Ubuntu 안에 남으며, 기존 `/root` 작업은 `sudo`를 통해 접근할 수 있습니다.
+
+Ubuntu 상단의 **+**는 별도 셸을 열고, 셸 이름을 누르면 실행 중인 작업으로 돌아갑니다. 셸 이름을 길게 눌러 이름을 바꾸고 **×**로 현재 셸을 닫을 수 있습니다. Ubuntu 창을 닫거나 Android가 앱을 종료하면 그 창에 열린 셸도 종료됩니다.
 
 Ubuntu는 앱에 포함된 PRoot로 실행됩니다. Termux, PC, Android 루팅은 필요 없습니다. 설정한 컴퓨터 이름은 Ubuntu의 `/etc/hostname`과 Bash 프롬프트에 적용됩니다. 계정과 `sudo` 권한의 범위는 Ubuntu 내부입니다. Android 커널을 공유하므로 이 설치에는 디스크 파티션이나 systemd 부팅 단계가 없습니다. [PRoot Android 실행 방식](https://github.com/oonid/pr/blob/7029b1fe8fa84d64339cabe38f9c5be2ea2ae7ac/docs/targetsdk35-compatibility.md)
 
@@ -38,9 +40,15 @@ Ubuntu에서는 [Galaxy 파일 관리자](../file-manager/)와 [Galaxy 서버 �
 
 Galaxy Terminal 0.4.15 이상에서는 Ubuntu 상단 **⋯ → Android 파일 전송**으로 파일을 가져오거나 저장할 수 있습니다. 받은 파일과 Android로 보낼 파일은 Ubuntu의 `/mnt/galaxy-transfer`에 둡니다.
 
+- `galaxy-open .`은 현재 폴더를 설치된 Galaxy 파일 관리자로 엽니다.
+- `galaxy-share ./report.pdf`는 파일 이름을 확인한 뒤 Android 공유 메뉴를 엽니다.
+- `galaxy-doctor .`은 개발 도구와 언어 서버의 설치 상태를 보여줍니다. Go 모듈에서는 설치된 Go와 캐시를 사용해 패키지를 읽고, `gopls`가 있으면 대표 Go 파일도 검사합니다.
+
 ## 내장 브라우저
 
 터미널 상단의 **브라우저**를 눌러 웹 주소나 검색어를 입력합니다. 검색어는 Google 검색으로 열립니다. 일반 사이트는 HTTPS로 열리고, 기기에서 실행 중인 서버는 `http://127.0.0.1:8080` 또는 `localhost:8080`처럼 입력할 수 있습니다. 서버가 다른 포트를 사용한다면 주소의 포트를 바꾸세요. 브라우저에서 **터미널**을 누르면 실행 중이던 셸로 돌아갑니다.
+
+같은 창에서 브라우저를 다시 열면 페이지, 방문 기록과 스크롤이 유지됩니다. 가로로 놓인 넓은 화면에서는 브라우저의 **나란히**를 눌러 터미널과 웹 미리보기를 동시에 볼 수 있습니다. **전체**는 다시 브라우저를 전체 화면으로 표시합니다.
 
 0.4.10부터 터미널 출력의 URL을 클릭하면 해당 주소가 내장 브라우저에서 바로 열립니다. 긴 주소가 여러 줄에 걸쳐 표시된 경우와 OSC 8 링크도 지원합니다. HTTPS와 기기 내부 HTTP 주소에 기존 브라우저의 주소 검증 규칙을 동일하게 적용합니다.
 
@@ -63,6 +71,8 @@ npm --prefix terminal ci --ignore-scripts
 ```
 
 빌드 결과는 `dist/Galaxy-Terminal.apk`입니다. 최초 빌드는 SHA-256으로 고정된 PRoot 실행기와 소스를 GitHub에서 받아 APK에 포함합니다. 업데이트 설치가 필요하면 `.build-cache/terminal/terminal-dev.jks`를 보관하세요. `node terminal/smoke.cjs`로 화면과 키 입력을 검사할 수 있습니다. 기존 Galaxy Code의 Playwright 캐시와 Microsoft Edge를 사용합니다.
+
+Windows에서 `./terminal/build.ps1 -PreviewPackage dev.galaxy.terminal.workspace`를 실행하면 `dist/Galaxy-Terminal-Preview.apk`에 별도 패키지의 검증용 APK를 만듭니다. 정식 앱과 별도의 Ubuntu 계정과 저장공간을 사용합니다.
 
 Edge 대신 Chrome으로 검사하려면 `$env:TERMINAL_TEST_BROWSER = 'chrome'`을 설정한 뒤 같은 검사 명령을 실행합니다.
 

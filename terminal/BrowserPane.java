@@ -2,13 +2,10 @@ package dev.galaxy.terminal;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
-import android.graphics.Insets;
-import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.WindowInsets;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.RenderProcessGoneDetail;
@@ -25,8 +22,11 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
-public final class BrowserActivity extends Activity {
-    static final String EXTRA_URL = "dev.galaxy.terminal.URL";
+final class BrowserPane extends LinearLayout {
+    private final Activity activity;
+    private final Button split;
+    private int scrollX, scrollY;
+    private boolean restoreScroll;
     private WebView page;
     private FrameLayout content;
     private EditText address;
@@ -34,17 +34,19 @@ public final class BrowserActivity extends Activity {
     private TextView error;
     private Button previous, next, reload;
 
-    @Override public void onCreate(Bundle state) {
-        super.onCreate(state);
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setBackgroundColor(0xff101319);
+    BrowserPane(Activity activity, Runnable close, Runnable toggleSplit, Bundle state) {
+        super(activity);
+        this.activity = activity;
+        setOrientation(VERTICAL);
+        setBackgroundColor(0xff101319);
 
-        LinearLayout toolbar = new LinearLayout(this);
+        LinearLayout toolbar = new LinearLayout(activity);
         toolbar.setGravity(android.view.Gravity.CENTER_VERTICAL);
         toolbar.setPadding(dp(4), 0, dp(4), 0);
         toolbar.setBackgroundColor(0xff191e28);
-        toolbar.addView(button("터미널", "터미널로 돌아가기", this::finish));
+        toolbar.addView(button("터미널", "터미널로 돌아가기", close));
+        split = button("나란히", "터미널과 브라우저를 나란히 표시", toggleSplit);
+        toolbar.addView(split);
         previous = button("←", "이전 페이지", () -> page.goBack());
         next = button("→", "다음 페이지", () -> page.goForward());
         reload = button("↻", "새로고침", () -> page.reload());
@@ -52,7 +54,7 @@ public final class BrowserActivity extends Activity {
         toolbar.addView(next);
         toolbar.addView(reload);
 
-        address = new EditText(this);
+        address = new EditText(activity);
         address.setSingleLine(true);
         address.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         address.setImeOptions(EditorInfo.IME_ACTION_GO);
@@ -70,43 +72,37 @@ public final class BrowserActivity extends Activity {
         });
         toolbar.addView(address, new LinearLayout.LayoutParams(0, dp(48), 1));
         toolbar.addView(button("이동", "주소 열기", this::openAddress));
-        layout.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
+        addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
 
-        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
         progress.setVisibility(View.INVISIBLE);
-        layout.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
+        addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
 
-        error = new TextView(this);
+        error = new TextView(activity);
         error.setPadding(dp(12), dp(6), dp(12), dp(8));
         error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         error.setVisibility(View.GONE);
-        layout.addView(error, new LinearLayout.LayoutParams(-1, -2));
+        addView(error, new LinearLayout.LayoutParams(-1, -2));
 
-        content = new FrameLayout(this);
+        content = new FrameLayout(activity);
         content.setFocusableInTouchMode(true);
-        layout.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(layout);
-        if (Build.VERSION.SDK_INT >= 35) {
-            layout.setOnApplyWindowInsetsListener((view, insets) -> {
-                Insets safe = insets.getInsets(WindowInsets.Type.systemBars()
-                        | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
-                view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
-                return insets;
-            });
-        }
+        addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
         createPage();
-        if (state != null) page.restoreState(state);
-        else {
-            String url = getIntent().getStringExtra(EXTRA_URL);
-            if (WebAddress.allowed(url)) page.loadUrl(url);
+        if (state != null) {
+            scrollX = state.getInt("scrollX");
+            scrollY = state.getInt("scrollY");
+            restoreScroll = true;
+            Bundle history = state.getBundle("history");
+            if (history != null) page.restoreState(history);
+            updateAddress(page.getUrl());
         }
         content.requestFocus();
         updateControls();
     }
 
     private void createPage() {
-        page = new WebView(this);
+        page = new WebView(activity);
         WebSettings settings = page.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -135,6 +131,12 @@ public final class BrowserActivity extends Activity {
             @Override public void onPageFinished(WebView view, String url) {
                 updateAddress(url);
                 updateControls();
+                if (restoreScroll) {
+                    restoreScroll = false;
+                    view.postVisualStateCallback(0, new WebView.VisualStateCallback() {
+                        @Override public void onComplete(long id) { view.scrollTo(scrollX, scrollY); }
+                    });
+                }
             }
 
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError failure) {
@@ -164,12 +166,23 @@ public final class BrowserActivity extends Activity {
             address.requestFocus();
             return;
         }
+        navigate(url);
+    }
+
+    void navigate(String url) {
+        if (!WebAddress.allowed(url)) return;
         address.setError(null);
         address.setText(url);
-        getSystemService(InputMethodManager.class).hideSoftInputFromWindow(address.getWindowToken(), 0);
+        activity.getSystemService(InputMethodManager.class).hideSoftInputFromWindow(address.getWindowToken(), 0);
         if (page == null) createPage();
         page.requestFocus();
-        page.loadUrl(url);
+        if (!url.equals(page.getUrl())) page.loadUrl(url);
+    }
+
+    void setSplit(boolean allowed, boolean active) {
+        split.setVisibility(allowed ? View.VISIBLE : View.GONE);
+        split.setText(active ? "전체" : "나란히");
+        split.setContentDescription(active ? "브라우저 전체 화면" : "터미널과 브라우저를 나란히 표시");
     }
 
     private void updateAddress(String url) {
@@ -189,7 +202,7 @@ public final class BrowserActivity extends Activity {
     }
 
     private Button button(String label, String description, Runnable action) {
-        Button button = new Button(this);
+        Button button = new Button(activity);
         button.setText(label);
         button.setAllCaps(false);
         button.setContentDescription(description);
@@ -210,18 +223,23 @@ public final class BrowserActivity extends Activity {
         page = null;
     }
 
-    @Override public void onBackPressed() {
-        if (page != null && page.canGoBack()) page.goBack();
-        else super.onBackPressed();
+    boolean goBack() {
+        if (page == null || !page.canGoBack()) return false;
+        page.goBack();
+        return true;
     }
 
-    @Override protected void onSaveInstanceState(Bundle state) {
-        super.onSaveInstanceState(state);
-        if (page != null) page.saveState(state);
+    Bundle save() {
+        Bundle state = new Bundle();
+        if (page != null) {
+            Bundle history = new Bundle();
+            page.saveState(history);
+            state.putBundle("history", history);
+            state.putInt("scrollX", page.getScrollX());
+            state.putInt("scrollY", page.getScrollY());
+        }
+        return state;
     }
 
-    @Override protected void onDestroy() {
-        destroyPage();
-        super.onDestroy();
-    }
+    void dispose() { destroyPage(); }
 }

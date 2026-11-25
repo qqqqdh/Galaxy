@@ -1,3 +1,5 @@
+param([ValidatePattern('^dev\.galaxy\.terminal\.[a-z][a-z0-9]*$')][string]$PreviewPackage)
+
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $root = Split-Path -Parent $PSScriptRoot
@@ -22,7 +24,7 @@ try {
     if (!$jdk) { throw 'A JDK with javac, jar and keytool is required.' }
     New-Item -Force -ItemType Directory $cache, "$cache/classes", "$cache/assets", 'dist' | Out-Null
     Copy-Item 'terminal/ui/index.html','terminal/ui/terminal.css','terminal/ui/terminal.js' "$cache/assets"
-    foreach ($profile in 'galaxy.mkshrc','galaxy-bashrc','galaxy-w','galaxy-ubuntu-setup.sh','ubuntu-locales.txt') {
+    foreach ($profile in 'galaxy.mkshrc','galaxy-bashrc','galaxy-w','galaxy-cli','galaxy-ubuntu-setup.sh','ubuntu-locales.txt') {
         $content = (Get-Content -Raw -Encoding UTF8 "terminal/$profile").Replace("`r`n", "`n")
         Set-Content -LiteralPath "$cache/assets/$profile" -Value $content -Encoding utf8NoBOM -NoNewline
     }
@@ -32,7 +34,7 @@ try {
     Copy-Item "$xterm/addon-fit/LICENSE" "$cache/assets/addon-fit-LICENSE.txt"
     Copy-Item "$xterm/addon-web-links/LICENSE" "$cache/assets/addon-web-links-LICENSE.txt"
 
-    javac -encoding UTF-8 --release 8 -classpath $platform -d "$cache/classes" terminal/TerminalActivity.java terminal/EditorInput.java terminal/PtySession.java terminal/Ubuntu.java terminal/UbuntuSetup.java terminal/BrowserActivity.java terminal/WebAddress.java terminal/FileTransfer.java
+    javac -encoding UTF-8 --release 8 -classpath $platform -d "$cache/classes" terminal/TerminalActivity.java terminal/EditorInput.java terminal/PtySession.java terminal/Ubuntu.java terminal/UbuntuSetup.java terminal/BrowserPane.java terminal/WebAddress.java terminal/FileTransfer.java terminal/SharedFileProvider.java
     & "$jdk/bin/jar.exe" cf "$cache/classes.jar" -C "$cache/classes" .
     & "$tools/d8.bat" --lib $platform --min-api 26 --output $cache "$cache/classes.jar"
 
@@ -49,9 +51,21 @@ try {
 
     & "$llvm/clang.exe" --target=aarch64-linux-android28 -static -O2 -Wall -Wextra -Werror -s `
         '-Wl,-z,max-page-size=16384' terminal/ubuntu-session.c -o "$cache/lib/arm64-v8a/libgalaxy_session.so"
+    $manifest = 'terminal/AndroidManifest.xml'
+    $apk = 'Galaxy-Terminal.apk'
+    if ($PreviewPackage) {
+        $previewManifest = (Get-Content -Raw -LiteralPath $manifest).
+            Replace('package="dev.galaxy.terminal"', "package=`"$PreviewPackage`"").
+            Replace('android:authorities="dev.galaxy.terminal.shared"', "android:authorities=`"$PreviewPackage.shared`"").
+            Replace('android:name=".', 'android:name="dev.galaxy.terminal.').
+            Replace('android:label="Galaxy Terminal"', 'android:label="Galaxy Terminal Preview"')
+        $manifest = "$cache/preview-manifest.xml"
+        Set-Content -LiteralPath $manifest -Value $previewManifest -Encoding utf8NoBOM
+        $apk = 'Galaxy-Terminal-Preview.apk'
+    }
     & "$tools/aapt2.exe" compile --dir terminal/res -o "$cache/browser-res.zip"
-    & "$tools/aapt2.exe" link -I $platform --manifest terminal/AndroidManifest.xml -A "$cache/assets" `
-        "$cache/browser-res.zip" -o "$cache/base.apk" --version-code 21 --version-name 0.4.15
+    & "$tools/aapt2.exe" link -I $platform --manifest $manifest -A "$cache/assets" `
+        "$cache/browser-res.zip" -o "$cache/base.apk" --version-code 22 --version-name 0.4.16
     Copy-Item -Force "$cache/base.apk" "$cache/packed.apk"
     $archive = [IO.Compression.ZipFile]::Open([IO.Path]::GetFullPath("$cache/packed.apk", $root), 'Update')
     try {
@@ -79,7 +93,6 @@ try {
         & "$jdk/bin/keytool.exe" -genkeypair -keystore $key -storepass android -keypass android -alias terminal-dev `
             -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Galaxy Terminal Development'
     }
-    $apk = 'Galaxy-Terminal.apk'
     & "$tools/apksigner.bat" sign --ks $key --ks-pass pass:android --key-pass pass:android --v4-signing-enabled false `
         --out "$cache/$apk" "$cache/aligned.apk"
     & "$tools/apksigner.bat" verify --verbose "$cache/$apk"
