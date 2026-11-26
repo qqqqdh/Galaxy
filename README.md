@@ -36,3 +36,7 @@ galaxy-ide ~/project
 [IDE 0.1.11 소스와 변경 기록](versions/0.1.11/)에는 Java, JavaScript, HTML, CSS, Go, Python, Rust 지원이 추가됐습니다. 언어 서버가 제공하는 후보는 하단에 나타나며 Tab으로 적용합니다. 함수 이름 위에서 Ctrl+]를 누르면 정의가 있는 파일이 열립니다.
 
 0.1.0부터 0.1.8까지의 태그는 배포 기록과 체크섬을 담습니다. 0.1.9부터는 태그에 해당 시점의 IDE 소스도 포함되어 있습니다.
+
+## 라이선스
+
+이 저장소의 코드는 [MIT 라이선스](LICENSE)로 배포됩니다. 함께 배포되는 Go 라이브러리와 PRoot·talloc은 각자의 라이선스를 따릅니다. [Go 라이브러리](cli-ide/THIRD_PARTY_LICENSES.txt) · [PRoot](terminal/PRoot-NOTICE.txt)
